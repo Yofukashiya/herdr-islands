@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit (https://coderabbit.ai) reviews pull requests in this repository.
+language: ru-RU
+reviews:
+  profile: chill
+  high_level_summary: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    # review/* bases are used for whole-codebase reviews (a PR that re-adds every file).
+    base_branches:
+      - "review/.*"
+  path_filters:
+    - "!mods/sheet-viewer/fflate.js" # vendored fflate 0.8.2, upstream code
+    - "!**/*.png"
+    - "!LICENSE*"
+    - "!**/LICENSE*"
+  path_instructions:
+    - path: "mods/**/*.js"
+      instructions: |
+        These are Herdr app mods (gpui-kit JS + the `herdr` API), not Node or browser code.
+        The runtime has hard limits that reviews must respect:
+        - It is an embedded interpreter about 50x slower than V8. A script that runs more than
+          ~0.5 s without yielding to a macrotask is silently killed. Only `cx.timer.after(...)`
+          yields; awaiting an already-resolved promise does not. Flag long synchronous loops over
+          file data, and don't suggest replacing timer yields with `await Promise.resolve()`.
+        - There is no `TextDecoder`, `DecompressionStream` or Node `Buffer`; `atob` exists.
+          `fs.readFile(path, "utf8")` is native and unlimited; `readTextFile` caps at 1 MiB.
+        - The color literal "transparent" is rejected; "#00000000" is used on purpose.
+        - Mods must work on Windows and macOS: paths may contain backslashes and drive letters,
+          and system commands differ (powershell/typeperf on Windows; iostat, vm_stat, sysctl,
+          security and unzip on macOS).
+        - A mod may restyle only the Islands layout, never other layouts the person uses.
+        - The status-bar mod reads CLI login tokens and sends each one only to its own service;
+          flag anything that would send them elsewhere or log them.
+    - path: "**/mod.json"
+      instructions: "Must be valid JSON. Herdr docks a mod folder whose mod.json is missing or invalid as an extra panel."
+    - path: "install.ps1"
+      instructions: |
+        Runs as `irm ... | iex` and as a file, in Windows PowerShell 5.1 and PowerShell 7.
+        It must stay ASCII-only (5.1 reads BOM-less files as ANSI), must not call `exit`
+        (that would close the person's shell under iex), and must pipe herdr-app.exe calls:
+        it is a GUI-subsystem program, so PowerShell only waits for it and sets $LASTEXITCODE
+        when its output goes into a pipeline.
+    - path: "install.sh"
+      instructions: "POSIX sh, run as `curl ... | sh`. Must work with macOS (BSD) and GNU userlands; no bashisms."
+chat:
+  auto_reply: true

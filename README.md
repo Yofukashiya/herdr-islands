@@ -1,277 +1,224 @@
-# Herdr Islands: сетка, статус-бар, таблицы и менеджер модов
+# Herdr Islands
 
-Раскладка и моды для Herdr app 0.1.13+. Написаны под Windows и macOS. Вживую проверены на Windows 11.
-На Mac код рассчитан на его команды (`iostat`, `vm_stat`, Связка ключей, `unzip`), но вживую ещё не запускался.
+**English** · [Русский](README.ru.md)
 
-- **Islands** ([CodeyPacker/herdr-mods](https://github.com/CodeyPacker/herdr-mods/tree/main/islands), MIT).
-  Каждая панель — отдельная скруглённая карточка.
-- **Фон с сеткой**, идея из [VanKurnia/herdr-van](https://github.com/VanKurnia/herdr-van): сверху сетка
-  на почти чёрном фоне плавно уходит в градиент. Картинка сгенерирована заново, а не скопирована.
-- **Статус-бар** ([DanielFGray/herdr-config](https://github.com/DanielFGray/herdr-config), Apache-2.0):
-  лимиты Claude/Codex/OpenCode/Cursor, CPU, MEM, LOAD.
-- **Просмотр таблиц:** xlsx/xlsm/csv/tsv внутри Herdr, как в Excel.
-- **Меню Mods:** раскладки, внешний вид Islands, включение и выключение модов.
+A layout and a set of mods for [Herdr app](https://herdr.dev): every panel is its own rounded card
+floating over a grid that fades into a gradient. It also adds a status bar with your AI plan limits, a
+Mods menu, agent previews and a spreadsheet viewer. Built for Windows and macOS; tested live on
+Windows 11, while the macOS code paths (`iostat`, `vm_stat`, Keychain, `unzip`) haven't run on a real Mac yet.
 
-## Моды
+![Islands layout: spaces and agents on the left, split terminals, the Files panel and the status bar](docs/overview.png)
 
-| Мод | Что делает |
+## Install
+
+One command. Herdr can stay open, and running it again updates everything without touching your settings.
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1 | iex
+```
+
+**macOS** (Terminal):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.sh | sh
+```
+
+You need Herdr app 0.1.13 or newer. On a Mac, open Herdr once from Applications before running the
+command: on first launch it creates the `herdr-app` command the script uses.
+
+The script:
+1. downloads this repository;
+2. copies the mods, the layout and the backdrop into `~/.config/herdr-app`;
+3. checks every mod with `herdr-app check`;
+4. starts Herdr if it isn't running and switches it to the Islands layout.
+
+New mod folders go in with a single rename, so an open Herdr never sees a half-copied mod (it would
+dock it as an extra panel). Nothing else in your Herdr folder is touched: themes, keys and other layouts
+stay as they are.
+
+<details>
+<summary>Install from a clone, or by hand</summary>
+
+From a clone: `powershell -ExecutionPolicy Bypass -File install.ps1` on Windows, `sh install.sh` on macOS.
+
+By hand, with Herdr closed: copy `layouts`, `mods` and `backgrounds` into `~/.config/herdr-app`
+(on Windows `C:\Users\<you>\.config\herdr-app`). Then open Herdr and run
+`herdr-app do layout.switch --name islands`, or cycle layouts with Ctrl+Shift+L.
+Copy real files, not symlinks: Herdr doesn't open images through symlinks.
+</details>
+
+On a Mac, the first time the status bar asks for your Claude limits, macOS asks whether `security` may
+read "Claude Code-credentials" from the Keychain (that's where Claude Code keeps its login). Click
+**Always Allow**. If you deny it, Claude just doesn't show up in the bar.
+
+### Update and uninstall
+
+To update, run the same command again. Your Look settings (`mods/sidebar-chrome/settings.json`) are
+kept. The `islands` layout file itself is replaced.
+
+To uninstall, switch to another layout (Ctrl+Shift+L), then delete `layouts/islands.json`,
+`layouts/islands.svg`, `backgrounds/islands-grid.png` and these folders in `~/.config/herdr-app/mods`:
+`sidebar-chrome`, `space-list`, `agent-list`, `tab-bar`, `pane-header`, `file-browser`, `mod-manager`,
+`status-bar`, `agent-radar`, `sheet-viewer`.
+
+## What's inside
+
+| Mod | What it does |
 |---|---|
-| `sidebar-chrome` | Верхняя и нижняя карточки сайдбара; читает настройки внешнего вида (`settings.json`) |
-| `space-list` | Список пространств, цвета пространств |
-| `agent-list` | Список агентов, подсмотр экрана агента при наведении |
-| `tab-bar` | Вкладки-пилюли, кнопки Files / Changes / Mods, кнопки окна |
-| `pane-header` | Шапка панели с линией фокуса |
-| `file-browser` | Панель Files, открывает таблицы в просмотрщике |
-| `mod-manager` | Панель Mods |
-| `status-bar` | Статус-бар: лимиты планов, CPU, память |
-| `agent-radar` | Выдвижная панель агентов у края окна |
-| `sheet-viewer` | Просмотрщик таблиц |
+| `sidebar-chrome` | Top and bottom cards of the sidebar; applies the look settings |
+| `space-list` | Spaces and their colors |
+| `agent-list` | Agents, with a preview of an agent's screen on hover |
+| `tab-bar` | Pill tabs, the Files / Changes / Mods buttons, window buttons |
+| `pane-header` | Pane header with a focus line |
+| `file-browser` | The Files panel; opens spreadsheets in the viewer |
+| `mod-manager` | The Mods panel |
+| `status-bar` | Plan limits, CPU, memory |
+| `agent-radar` | A drawer of agents at the window edge |
+| `sheet-viewer` | Spreadsheet viewer |
 
-Раскладка называется `islands` (`layouts/islands.json`).
+**Look.** Based on [Islands](https://github.com/CodeyPacker/herdr-mods/tree/main/islands) by Cody Packer.
+The backdrop idea comes from [herdr-van](https://github.com/VanKurnia/herdr-van): a grid on near-black
+that fades into a gradient. The image here is generated from scratch (`backgrounds/make_islands_grid.py`)
+at 3840×2160 with soft lines, so it stays smooth on 1080p, 1440p, 4K and Retina. The pattern runs top
+to bottom, so cropping to 16:10, ultrawide or half a screen loses nothing. Dithering keeps the dark
+gradient free of banding. In a light theme the backdrop becomes a gradient made from the theme's colors.
 
-## Установка
+**Status bar.** Based on [DanielFGray/herdr-config](https://github.com/DanielFGray/herdr-config).
+- **Contents:** your current space on the left; plan limits for Claude, Codex, OpenCode and Cursor; CPU,
+  MEM and LOAD.
+- **Limit colors:** limits read like a battery of what's left: green from 50%, amber from 11 to 49%, red
+  (pulsing) at 10% or less.
+- **Narrow windows:** the bar adapts to the window width (zoom included). It drops less important items in
+  this order: palette hint, LOAD, MEM, CPU, branch.
+- **CPU and memory everywhere:** they come from `typeperf` on Windows and `iostat`, `vm_stat` and `sysctl`
+  on macOS. LOAD is shown on macOS and Linux; Windows has no such metric.
+- **Restart-safe:** the request schedule survives restarts, so reloading Herdr doesn't get you "rate
+  limited".
 
-Установка — это копирование трёх папок (`layouts`, `mods`, `backgrounds`) в папку Herdr
-`~/.config/herdr-app`. На обеих системах путь один и тот же; на Windows это `C:\Users\<ты>\.config\herdr-app`.
-Остальное в папке Herdr (темы, клавиши, другие раскладки) не трогается.
+**Animations.** All of them are native, so there are no timers and nothing runs while hidden:
+- limit bars and memory slide to new values;
+- the agents dot pulses amber while an agent works and red when it needs you;
+- in a split tab, the focused pane gets a line in the space color, and the header buttons fade in.
 
-Два правила для обеих систем:
-- **Копируй при закрытом окне Herdr.** Если Herdr открыт, он может увидеть папку мода раньше её `mod.json`
-  и сам вставить этот мод в раскладку лишней панелью. Терминалы при закрытии окна не пропадают:
-  их держит herdr-core.
-- **Копируй файлы, а не симлинки:** картинки по симлинкам Herdr не открывает.
+**Agent preview** (`agent-list`). Hover an agent in the sidebar: a card shows the bottom of its screen
+without the Claude Code or Codex input box, and refreshes every 1.5 s while open. Click it to jump there.
 
-> Если репозиторий приватный, `git clone` попросит войти в GitHub. Проще всего так:
-> `gh auth login`, потом `gh repo clone Yofukashiya/herdr-islands`. Или скачай ZIP на сайте: Code → Download ZIP.
+**Agent radar** (`agent-radar`). A thin strip at the right edge shows how many agents there are and their
+state. A red dot pulses when one needs you; a spinner shows while one works. Hover it and the list slides
+out: space color, name, location, last line of the screen. Drag it to another edge if you like.
 
-### Windows
+**Space color as the accent.** The current space's color tints the active tab, the pane focus line, the
+selected space, the space chip and branch icon in the status bar, and the radar.
 
-Нужно: Herdr app 0.1.13 или новее и Git (или ZIP, см. выше). Команды для PowerShell.
+The terminal cursor can't be animated: Herdr draws it itself (it uses only the libghostty-vt core, not
+Ghostty's renderer or shaders), and mods have no access to it.
 
-1. Скачай репозиторий:
-   ```powershell
-   git clone https://github.com/Yofukashiya/herdr-islands.git
-   cd herdr-islands
-   ```
-2. Закрой окно Herdr.
-3. Скопируй файлы:
-   ```powershell
-   $H = "$HOME\.config\herdr-app"
-   New-Item -ItemType Directory -Force $H | Out-Null
-   Copy-Item -Recurse -Force layouts, mods, backgrounds $H
-   ```
-4. Открой Herdr. Проверь моды и включи раскладку:
-   ```powershell
-   foreach ($m in "sidebar-chrome","space-list","agent-list","tab-bar","pane-header","file-browser","mod-manager","status-bar","agent-radar","sheet-viewer") {
-     herdr-app check "$HOME\.config\herdr-app\mods\$m"
-   }
-   herdr-app do layout.switch --name islands
-   ```
-   На каждый мод должно появиться `check passed`. Если PowerShell не знает `herdr-app`, открой новое окно
-   PowerShell или вызови программу по полному пути: `& "$env:LOCALAPPDATA\Programs\herdr-app\herdr-app.exe"`.
+## Mods menu
 
-Раскладки по кругу переключает Ctrl+Shift+L; им же можно вернуться к обычному виду.
+The **Mods** button next to Files and Changes opens a panel with three tabs.
 
-### macOS
+![The Mods panel: mods grouped by where they sit in the window](docs/mods.png)
 
-Нужно:
-- Mac на Apple Silicon: Herdr для Mac выпускается только под него.
-- Herdr app 0.1.13 или новее. Перетащи его в «Программы» и один раз открой оттуда, не из образа диска:
-  при первом запуске он создаёт команду `~/.local/bin/herdr-app` и папку `~/.config/herdr-app`.
-- Git: ставится командой `xcode-select --install`. Или скачай ZIP, см. выше.
+- **Mods.** Mods are grouped by where they sit in the window: Sidebar, Top bar, Panes, Side panel,
+  Status bar, Floating. After those come:
+  - *Not in this layout*: your mods this layout doesn't show;
+  - *Other layouts*: mods used by other layouts (folded);
+  - *Herdr system*: built-in menus and dialogs (folded).
 
-Остальное (`unzip`, `iostat`, `vm_stat`, `sqlite3`) в macOS уже есть. Команды для Terminal.
+  The switch turns a mod off in the current layout. Errors show in the list, with a red dot on the group
+  header. Hovering a row reveals **Check** (`herdr-app check`) and **Folder**.
+- **Look:**
+  - Color: theme (graphite, ink, moss, your own) and accent (space color, theme accent or one of 8);
+  - Surfaces: card and pane opacity, backdrop (grid, gradient, plain);
+  - Extras: the agent radar.
+- **Layouts.** Every layout with a preview; click one to switch to it.
 
-1. Скачай репозиторий:
-   ```sh
-   git clone https://github.com/Yofukashiya/herdr-islands.git
-   cd herdr-islands
-   ```
-2. Закрой Herdr: Cmd+Q.
-3. Скопируй файлы:
-   ```sh
-   mkdir -p ~/.config/herdr-app
-   cp -R layouts mods backgrounds ~/.config/herdr-app/
-   ```
-   Имена папок пиши без `/` в конце. Иначе `cp` на Mac скопирует их содержимое, а не сами папки.
-4. Открой Herdr. Проверь моды и включи раскладку:
-   ```sh
-   for m in sidebar-chrome space-list agent-list tab-bar pane-header file-browser mod-manager status-bar agent-radar sheet-viewer; do
-     ~/.local/bin/herdr-app check ~/.config/herdr-app/mods/$m
-   done
-   ~/.local/bin/herdr-app do layout.switch --name islands
-   ```
-   На каждый мод должно появиться `check passed`.
+## Settings
 
-Раскладки по кругу переключает команда `layout.switch`. Её сочетание клавиш на Mac смотри в
-`~/.config/herdr-app/keys.json`.
-
-При первом запросе лимитов Claude macOS спросит, можно ли программе `security` прочитать
-«Claude Code-credentials» из Связки ключей. Claude Code хранит вход там, а не в файле.
-Нажми «Всегда разрешать». Если откажешь, Claude просто не появится в статус-баре.
-
-### Обновление
-
-В папке репозитория выполни `git pull`, закрой Herdr и повтори шаг 3.
-Копирование перезапишет `mods/sidebar-chrome/settings.json`, поэтому выбранные в Mods → Look настройки
-вернутся к значениям по умолчанию.
-
-## Настройки
-
-Удобнее всего менять их в меню Mods → Look. Там же видно, что выбрано сейчас. Хранятся они в
-`mods/sidebar-chrome/settings.json` и применяются сразу:
+The easiest place to change them is Mods → Look. They live in `mods/sidebar-chrome/settings.json` and
+apply immediately:
 
 ```json
 { "opacity": 0.8, "main_opacity": 0.75, "backdrop": "backgrounds/islands-grid.png", "radar": true, "accent": "space" }
 ```
 
-- `opacity`: непрозрачность боковых карточек и статус-бара (1 — без просвета сетки).
-- `main_opacity`: непрозрачность панелей с терминалами.
-- `backdrop`: фон тёмной темы:
-  - `"grid"` или путь к картинке;
-  - `"gradient"` — нативный градиент из цветов темы;
-  - `"plain"` — ровный фон темы.
+- `opacity`: opacity of the side cards and the status bar (1 hides the grid behind them).
+- `main_opacity`: opacity of the terminal panes.
+- `backdrop`: `"grid"` or an image path, `"gradient"` (native, from theme colors), or `"plain"`.
+- `radar`: `false` hides the agent radar.
+- `accent`: `"space"`, `"theme"`, or your own `"#rrggbb"`.
 
-  В светлой теме вместо картинки всегда рисуется градиент из цветов самой темы.
-- `radar`: `false` прячет выдвижную панель агентов у края окна.
-- `accent`: `"space"` — цвет текущего пространства, `"theme"` — акцент темы, или свой цвет `"#rrggbb"`.
+To limit which services the status bar asks, create `~/.config/herdr-app/usage.json` with
+`{ "providers": ["claude", "codex"] }`. `{ "providers": [] }` turns limits off, leaving CPU and MEM.
 
-Если нужны только некоторые сервисы в статус-баре, создай `~/.config/herdr-app/usage.json` с
-`{ "providers": ["claude", "codex"] }`. `{ "providers": [] }` выключает лимиты совсем: в баре останутся
-только CPU и MEM.
+To make a backdrop for another theme or size, change the colors at the top of
+`backgrounds/make_islands_grid.py` and run `python3 make_islands_grid.py my-grid.png`. Save it under a
+**new** name and point `backdrop` at it. Herdr caches images by path, so a file replaced under its old
+name only shows after a restart.
 
-Фон под другую тёмную тему или размер: поправь цвета вверху `backgrounds/make_islands_grid.py` и запусти
-`python3 make_islands_grid.py islands-grid-v2.png`. Сохраняй под **новым** именем и укажи его в `backdrop`:
-Herdr кэширует картинку по пути, поэтому файл, подменённый под старым именем, покажется только после
-перезапуска. Новое имя применяется сразу.
+## Spreadsheet viewer
 
-## Меню Mods
+Click an `.xlsx`, `.xlsm`, `.csv` or `.tsv` file in the Files panel and it opens in a new tab, looking the
+way it does in Excel. It is read-only.
 
-Кнопка **Mods** справа от Files и Changes открывает панель с тремя вкладками.
+![A workbook in the viewer: merged title, number formats, conditional formatting, a chart and a picture](docs/sheet.png)
 
-- **Mods.** Моды сгруппированы по месту в окне: Sidebar, Top bar, Panes, Side panel, Status bar, Floating.
-  Дальше идут:
-  - «Not in this layout» — твои моды, которые эта раскладка не показывает, например просмотрщик таблиц;
-  - «Other layouts» — моды других раскладок;
-  - «Herdr system» — служебные меню и диалоги.
+What it shows:
+- **Values:** values in Excel number formats (dates, percentages, currency and separators follow your
+  system language), fonts, fills, borders, alignment, wrapped text.
+- **Structure:** merged cells, column widths and row heights, hidden rows and sheets, frozen panes.
+- **Conditional formatting:** color scales, data bars, icon sets, value and formula rules.
+- **Objects:** table styles, pictures, charts (bar, line, area, pie, doughnut, scatter, radar, bubble,
+  combo) and shapes with text.
+- **Extras:** comments, hyperlinks, sheet tabs with their colors.
 
-  Последние две группы свёрнуты, свёрнутость запоминается.
+Controls:
+- Wheel scrolls, Shift+wheel scrolls sideways, Ctrl+wheel or the −/+ buttons zoom (50–400%).
+- Arrows, PageUp/PageDown and Ctrl+Home/End move between cells.
+- The selected cell's full value or formula shows in the bar at the top.
 
-  Переключатель выключает мод в текущей раскладке: блок скрывается, плавающая панель или шапка панели
-  убирается и запоминается, чтобы потом вернуть. Ошибки модов видны в списке, у заголовка группы
-  с ошибкой — красная точка. При наведении на строку появляются «Check» (`herdr-app check`) и «Folder».
-- **Look** (для Islands):
-  - Color: тема (graphite, ink, moss, свои из `themes/`) и акцент (цвет пространства, цвет темы или один из 8);
-  - Surfaces: непрозрачность карточек и панелей, фон (сетка, градиент, без фона);
-  - Extras: выдвижная панель агентов.
-- **Layouts:** все раскладки с превью, клик переключает.
-
-## Просмотр таблиц
-
-Кликни по `.xlsx`, `.xlsm`, `.csv` или `.tsv` в панели Files: файл откроется в новой вкладке. Из терминала:
+From a terminal:
 
 ```sh
-herdr-app do tab.new --name report.xlsx --mod sheet-viewer --props '{"file":"/полный/путь/report.xlsx"}'
+herdr-app do tab.new --name report.xlsx --mod sheet-viewer --props '{"file":"/full/path/report.xlsx"}'
 ```
 
-Показывается всё, что есть в файле:
-- **Значения и формат:** значения в числовых форматах Excel (даты, проценты, валюты, разделители — по языку системы).
-- **Оформление:** шрифты, заливки, рамки, выравнивание, перенос текста.
-- **Структура:** объединённые ячейки, ширины столбцов и высоты строк, скрытые строки и листы, закреплённые области.
-- **Условное форматирование:** цветовые шкалы, гистограммы, наборы значков, правила по значению и формуле.
-- **Объекты:** стили умных таблиц, картинки, графики (столбцы, линии, области, круговые, кольцевые, точечные,
-  лепестковые, пузырьковые, комбинированные) и фигуры с текстом.
-- **Прочее:** примечания (красный уголок, текст в строке формул), ссылки, вкладки листов с их цветами.
+Limits:
+- **.xls** (Excel 97–2003) isn't read; save it as .xlsx.
+- **Formulas** aren't recalculated: you see the result saved in the file. When there is none, simple
+  formulas are computed and the rest show as formula text.
+- **Angled text** is drawn horizontally; vertical stacked text works.
+- **Built-in table styles** are close approximations.
+- **Charts** have no trendlines, error bars or true 3D.
+- **Not drawn:** sparklines, slicers, form controls and SmartArt.
 
-Листы рисуются белыми, как в Excel, чтобы цвета из файла выглядели так, как задумано. Только чтение.
+How it reads files. Herdr runs mod scripts in an interpreter about 50× slower than Node and silently
+stops a script that runs ~0.5 s without yielding. So the system unzips the workbook (.NET via
+`powershell` on Windows, `unzip` on macOS and Linux) into `mods/sheet-viewer/.cache`. The parts are read
+natively and parsed in short slices, with the current step shown on screen. A test workbook (4 sheets,
+60,000 cells on one) opens in about 0.4 s. A tab's cache is removed when the tab closes, and anything
+older than 12 hours when the next file opens.
 
-Управление:
-- колёсико — прокрутка, Shift+колёсико — по горизонтали, Ctrl+колёсико или кнопки −/+ — масштаб;
-- стрелки, PageUp/PageDown, Ctrl+Home/End — перемещение по ячейкам;
-- выделенная ячейка показывается полностью в строке сверху: значение или формула.
+## What the status bar reads and sends
 
-Ограничения:
-- **Формат .xls** (Excel 97–2003) не читается: пересохрани его в .xlsx.
-- **Формулы** не пересчитываются: показывается результат, сохранённый в файле. Если его нет (файлы,
-  созданные некоторыми библиотеками), простые формулы досчитываются, остальные показываются текстом формулы.
-  Графики без сохранённых данных берут значения из ячеек книги.
-- **Повёрнутый под углом текст** рисуется горизонтально; вертикальный «столбиком» поддерживается.
-- **Встроенные стили умных таблиц** (TableStyleMedium2 и т. п.) воспроизведены приближённо.
-- **В графиках нет** линий тренда, планок погрешностей и настоящего 3D: объёмные графики рисуются плоскими.
-- **Спарклайны, срезы, элементы управления формы и SmartArt** не рисуются.
-- **Масштаб** — от 50% до 400%.
+It reads saved CLI logins:
+- `~/.claude/.credentials.json` (on macOS the Keychain);
+- `~/.codex/auth.json`;
+- opencode's `auth.json`;
+- Cursor's database via `sqlite3`.
 
-Как он читает файлы. Скрипты модов в Herdr выполняются интерпретатором, примерно в 50 раз медленнее Node,
-и Herdr молча останавливает скрипт, который работает дольше ~0,5 с без паузы. Поэтому xlsx распаковывает
-сама система: .NET через `powershell` на Windows, `unzip` на Mac и Linux. Распаковка идёт в
-`mods/sheet-viewer/.cache`, части книги читаются нативно, а разбор делится на короткие порции.
-Пока это идёт, на экране видно, что сейчас читается. Файлы с удалённых машин сначала копируются в кэш.
-Кэш вкладки удаляется при её закрытии, всё старше 12 часов — при следующем открытии.
-Тестовая книга (4 листа, 60 000 ячеек на одном) открывается примерно за 0,4 с.
+With those tokens it asks each service for your limits every 10 minutes: api.anthropic.com, chatgpt.com,
+opencode.ai, cursor.com. These endpoints are undocumented and may stop working one day. Nothing is sent
+anywhere else. For CPU and memory it runs `typeperf` and once `powershell` on Windows, or `iostat`,
+`vm_stat` and `sysctl` on macOS.
 
-## Что изменено по сравнению с оригиналами
+## License
 
-**Islands**
-- Исправлено: при смене темы фон панелей с терминалами оставался цвета старой темы.
-- Исправлено: цикл, который следит за `settings.json`, мог после переключения раскладки переписать фон
-  в чужой раскладке (например, `main`).
-- Фон окна следует системной теме: в тёмной сетка, в светлой градиент из цветов темы.
-- Исправлено: на Windows папка в шапке панели сокращалась до `~` только у самого домашнего каталога.
-
-**Фон**
-- 3840×2160, мягкие линии сетки вместо жёстких в 1px. Herdr всегда растягивает фон под окно (`cover`),
-  а жёсткие линии при масштабировании мылятся и рябят. Мягкие одинаково выглядят на 1080p, 1440p, 4K и Retina.
-- Рисунок идёт сверху вниз, отлив по углам. Поэтому обрезка под 16:10 (Mac), ультраширокий экран
-  или половину экрана ничего важного не съедает.
-- Сглаживание шумом (дизеринг): на тёмном градиенте нет полос.
-
-**Статус-бар** (`status-bar`)
-- Стиль карточки Islands. Слева плашка текущего пространства его цветом (`@машина` для удалённой).
-- Подстраивается под ширину окна (с учётом zoom): в узком окне прячет второстепенное в таком порядке —
-  подсказка палитры, LOAD, MEM, CPU, ветка. Ничего не обрезается посередине.
-- CPU и MEM на Windows (typeperf) и macOS (iostat, vm_stat, sysctl), а не только на Linux.
-  LOAD есть на macOS и Linux; на Windows такого показателя не существует.
-- Пока системные числа не видны, они не замеряются (на Windows и Mac замер запускает программу).
-- Не нужны `jq`, `sh` и `test`, которых нет на чистых Windows и Mac. Ссылка «Usage Dashboard»
-  открывается на всех ОС. Claude на macOS: вход читается из Связки ключей.
-- Лимиты показаны как батарейка, по остатку: от 50% зелёный, от 11 до 49% янтарный, 10% и меньше красный
-  (и пульсирует). Цвета насыщенные (`#22c55e`, `#f59e0b`, `#ef4444`), а не пастельные цвета темы.
-- Исправлено: оригинал при каждом запуске мода (запуск Herdr, переключение раскладки, правка файла) сразу
-  заново опрашивал все сервисы, и Claude отвечал «rate limited». Теперь расписание запросов переживает перезапуск.
-
-**Анимации** (нативные: без таймеров, не работают, пока элемент не виден)
-- Полоски лимитов и MEM плавно перетекают к новому значению; столбики CPU тоже.
-- Точка агентов: медленно пульсирует янтарным, пока агент работает; быстро и красным, когда агент ждёт тебя.
-- Шапка панели: в разделённой вкладке у активной панели плавно появляется линия цвета пространства.
-  Кнопки разделения, зума и закрытия проявляются плавно и больше не сдвигают заголовок. «Needs you» пульсирует.
-
-**Подсмотреть агента** (`agent-list`). Задержи мышь на агенте в сайдбаре (и в узком режиме тоже): рядом
-откроется карточка с низом его экрана, без поля ввода Claude Code или Codex. Пока карточка открыта, она
-обновляется раз в 1,5 с. По клику переходишь к агенту.
-
-**Выдвижная панель агентов** (`agent-radar`, плавающий блок `radar` в раскладке). У правого края узкая
-полоска со счётчиком и статусами: красная точка пульсирует, когда агент ждёт тебя, спиннер — пока работает.
-При наведении выезжает список: цвет пространства, имя, где агент находится, последняя строка его экрана.
-По клику переходишь к агенту. Её можно перетащить к другому краю. Экраны читаются раз в 2 с и только пока
-панель открыта.
-
-**Цвет пространства как акцент.** `space-list` публикует цвет текущего пространства. Им окрашены рамка и текст
-активной вкладки, линия фокуса панели, подсветка выбранного пространства, плашка пространства и иконка ветки
-в статус-баре, полоски в выдвижной панели и карточке агента.
-
-Курсор терминала анимировать нельзя: его рисует сам терминал Herdr (из Ghostty взято только ядро
-libghostty-vt, без рендерера и его шейдеров), моды к нему доступа не имеют, и в настройках Herdr нет
-параметров курсора. Форму курсора задаёт программа в терминале (escape-последовательность `ESC [ n q`).
-
-## Что мод статус-бара делает с сетью и файлами
-
-Читает сохранённые входы CLI: `~/.claude/.credentials.json` (на Mac — Связка ключей), `~/.codex/auth.json`,
-`auth.json` от opencode, базу Cursor через `sqlite3`. С этими токенами раз в 10 минут спрашивает лимиты у самих
-сервисов: api.anthropic.com, chatgpt.com, opencode.ai, cursor.com. Эндпоинты недокументированные, так что могут
-однажды перестать работать. Больше никуда ничего не уходит. Для CPU/MEM запускает `typeperf` и один раз
-`powershell` (Windows) или `iostat`, `vm_stat`, `sysctl` (Mac).
-
-## Лицензии
-
-`LICENSE-islands-MIT.txt` (Islands), `LICENSE-usage-Apache-2.0.txt` (статус-бар),
-`mods/sheet-viewer/LICENSE-fflate.txt` (fflate, распаковка zip).
+[MIT](LICENSE). Parts of it come from other projects and keep their licenses:
+- the Islands mods: MIT, © Cody Packer ([LICENSE-islands-MIT.txt](LICENSE-islands-MIT.txt));
+- `status-bar`, from DanielFGray/herdr-config: Apache-2.0
+  ([LICENSE-usage-Apache-2.0.txt](LICENSE-usage-Apache-2.0.txt));
+- `file-browser` and the parts Islands took from Herdr's built-in mods: Herdr, Apache-2.0;
+- fflate, used for unzipping: MIT ([mods/sheet-viewer/LICENSE-fflate.txt](mods/sheet-viewer/LICENSE-fflate.txt)).
