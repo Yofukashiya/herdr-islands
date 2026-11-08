@@ -234,6 +234,8 @@ Limits:
 - **Built-in table styles** are close approximations.
 - **Charts** have no trendlines, error bars or true 3D.
 - **Not drawn:** sparklines, slicers, form controls and SmartArt.
+- **Very large sheets** (hundreds of thousands of cells) open slowly and can run into the mod
+  runtime's memory limit; the viewer then says "out of memory" instead of showing the sheet.
 
 How it reads files. Herdr runs mod scripts in an interpreter about 50× slower than Node and silently
 stops a script that runs ~0.5 s without yielding. So the system unzips the workbook (.NET via

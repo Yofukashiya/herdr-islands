@@ -87,10 +87,18 @@ export class Peek {
   show(address, cx) {
     this.open = address;
     this.poll?.cancel();
+    // One read at a time: a slow one (an agent on another machine) must not pile up behind the
+    // timer, or land after a newer one and put old text back.
+    let reading = false;
     const read = (cx) => cx.spawn(async (cx) => {
-      if (this.open !== address) return;
-      const r = await hc(["read", address]).catch(() => null);
-      if (r && r.code === 0) this.lines[address] = screenTail(screenText(r.stdout));
+      if (this.open !== address || reading) return;
+      reading = true;
+      try {
+        const r = await hc(["read", address]).catch(() => null);
+        if (r && r.code === 0) this.lines[address] = screenTail(screenText(r.stdout));
+      } finally {
+        reading = false;
+      }
       if (this.open === address) cx.notify();
     });
     read(cx);
@@ -103,6 +111,15 @@ export class Peek {
     this.card = false;
     this.poll?.cancel();
     this.poll = null;
+  }
+
+  /** The row went away from under the pointer without a hover-out: drop the card, any pending
+   *  open and the polling. */
+  dismiss() {
+    this.timer?.cancel();
+    this.timer = null;
+    this.row = null;
+    this.hide();
   }
 
   /**

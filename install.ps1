@@ -97,10 +97,14 @@
       $from = Join-Path $src "mods\$m"
       $to = Join-Path $target "mods\$m"
       if (Test-Path $to) {
-        # Update in place (Herdr reloads changed files); keep the person's settings.
+        # Update in place (Herdr reloads changed files); keep the person's settings. main.js goes
+        # last: Herdr reloads a mod on each file that changes, and the reload the entry point
+        # triggers then finds every new module already there. (Swapping whole folders would be
+        # atomic, but Windows refuses to rename a folder Herdr is watching.) Interrupted: run again.
         $settings = Join-Path $to 'settings.json'
         $kept = if (Test-Path $settings) { [IO.File]::ReadAllBytes($settings) } else { $null }
-        Copy-Item -Recurse -Force (Join-Path $from '*') $to
+        Copy-Item -Recurse -Force (Join-Path $from '*') $to -Exclude 'main.js'
+        Copy-Item -Force (Join-Path $from 'main.js') $to
         if ($kept) { [IO.File]::WriteAllBytes($settings, $kept) }
         Say "  updated    $m"
       } else {

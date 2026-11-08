@@ -24,7 +24,7 @@ def main(version):
     for path in sorted(glob.glob(os.path.join(ROOT, "mods", "*", "mod.json"))):
         meta = json.load(open(path, encoding="utf-8"))
         meta["version"] = version
-        open(path, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, indent=2) + "\n")
+        open(path, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
     print("mod.json version ->", version)
 
     path = os.path.join(ROOT, "CHANGELOG.md")

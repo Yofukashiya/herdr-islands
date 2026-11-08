@@ -80,15 +80,20 @@ export async function startUpdate(info, mod) {
   const raw = `https://raw.githubusercontent.com/${REPO}/${info.tag}`;
   let r;
   if (platform() === "windows") {
+    // A PowerShell single-quoted string: the curly single quotes count as quotes too, so all are doubled.
+    const ps = (s) => `'${String(s).replace(/['‘’‚‛]/g, "$&$&")}'`;
+    // A failed download gets its own failure line, so the panel can say why instead of waiting.
     const script = [
       "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12",
-      `& ([scriptblock]::Create((Invoke-RestMethod '${raw}/install.ps1'))) --update --ref '${info.tag}' *>&1 | Out-File -Encoding utf8 -FilePath '${log.replace(/'/g, "''")}'`,
+      `try { $s = Invoke-RestMethod ${ps(`${raw}/install.ps1`)} } catch { "islands-update: failed Couldn't download the installer: $($_.Exception.Message)" | Out-File -Encoding utf8 -FilePath ${ps(log)}; exit 1 }`,
+      `& ([scriptblock]::Create($s)) --update --ref ${ps(info.tag)} *>&1 | Out-File -Encoding utf8 -FilePath ${ps(log)}`,
     ].join("; ");
     r = await exec("powershell", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
       `Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encodeCommand(script)}'`]);
   } else {
     const q = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
-    const inner = `curl -fsSL ${q(`${raw}/install.sh`)} | sh -s -- --update --ref ${q(info.tag)}`;
+    // Downloaded first: `curl | sh` would hide a failed download (sh gets no input and exits 0).
+    const inner = `s=$(curl -fsSL ${q(`${raw}/install.sh`)}) || { echo "islands-update: failed Couldn't download the installer"; exit 1; }; printf '%s\\n' "$s" | sh -s -- --update --ref ${q(info.tag)}`;
     r = await exec("sh", ["-c", `nohup sh -c ${q(inner)} > ${q(log)} 2>&1 &`]);
   }
   if (r.code !== 0) {

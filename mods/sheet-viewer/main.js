@@ -35,6 +35,25 @@ function textWidth(text, size, bold) {
   return em * size * (bold ? 1.06 : 1);
 }
 
+/**
+ * A General-format number shrunk to its column, as Excel does instead of "####": fewer decimals
+ * (rounded), then E notation. null when nothing fits. `sep` is the locale's decimal separator.
+ */
+function fitGeneral(v, fits, sep) {
+  if (!Number.isFinite(v)) return null;
+  for (let d = 9; d >= 0; d--) {
+    const s = String(Number(v.toFixed(d)));
+    if (s.includes("e")) break;
+    const t = s.replace(".", sep);
+    if (fits(t)) return t;
+  }
+  for (let d = 5; d >= 0; d--) {
+    const t = v.toExponential(d).replace(".", sep).replace(/e([+-])(\d)$/, "e$10$2").toUpperCase();
+    if (fits(t)) return t;
+  }
+  return null;
+}
+
 // ---- reading the file ------------------------------------------------------------
 
 function platform() {
@@ -42,7 +61,9 @@ function platform() {
 }
 
 const CACHE = `mods/${MOD}/.cache`;
-const q = (x) => x.replace(/'/g, "''"); // inside a PowerShell single-quoted string
+// Inside a PowerShell single-quoted string. PowerShell reads the curly single quotes (‘ ’ ‚ ‛) as
+// quotes too, so a file named "a’; cmd; ’.xlsx" would run cmd: every one of them is doubled.
+const q = (x) => x.replace(/['‘’‚‛]/g, "$&$&");
 
 async function bytesFromBase64(text, tick) {
   const bin = atob(text.replace(/\s+/g, ""));
@@ -211,7 +232,7 @@ export default class Sheet extends View {
         stage(prep.kind === "csv" ? "Reading rows" : "Reading styles and strings");
         if (prep.kind === "csv") {
           const csv = await readCsvText(prep.text, { delimiter: e === "tsv" ? "\t" : undefined, encoding: prep.encoding, tick });
-          this.wb = csvWorkbook(csv, this.file);
+          this.wb = await csvWorkbook(csv, this.file, tick);
         } else {
           this.wb = await openXlsx(prep.src, { pause: this.pause });
         }
@@ -227,12 +248,24 @@ export default class Sheet extends View {
     });
   }
 
+  /** A click on sheet i. A sheet that fails to read shows why, with the other sheets to pick from. */
+  switchSheet(i, cx) {
+    cx.spawn(async (cx2) => {
+      try { await this.openSheet(i, cx2); }
+      catch (e) { if (this.tab === i) this.sheetError = String(e?.message ?? e); }
+      cx2.notify();
+    });
+  }
+
   /** Shows sheet i, parsing it first if needed. */
   async openSheet(i, cx) {
     this.tab = i;
     this.sh = null;
+    this.sheetError = null;
     cx?.notify();
-    this.sh = await this.wb.loadSheet(i);
+    const sh = await this.wb.loadSheet(i);
+    if (this.tab !== i) return; // another sheet was picked meanwhile: its own load sets the view up
+    this.sh = sh;
     this.media = this.media ?? {};
     this.zoom = this.sh.view?.zoom ?? 1;
     const tl = this.sh.view?.topLeft ?? { r: 0, c: 0 };
@@ -397,7 +430,8 @@ export default class Sheet extends View {
     if (cell._fmt !== fmt) {
       const out = formatValue(v, fmt, { date1904: this.wb.date1904, locale: this.locale }) ?? { text: String(v) };
       cell._fmt = fmt;
-      cell._out = { text: out.text, color: out.color ?? null, num: typeof v === "number", bool: typeof v === "boolean" };
+      cell._out = { text: out.text, color: out.color ?? null, num: typeof v === "number", bool: typeof v === "boolean",
+        general: fmt === "General" && typeof v === "number" ? v : undefined };
     }
     return cell._out;
   }
@@ -446,6 +480,13 @@ export default class Sheet extends View {
         let text = shown.text;
         let boxX = x, boxW = w;
         const wrap = a.wrap || a.h === "justify" || a.h === "distributed";
+        if (!wrap && shown.general !== undefined && !shown.err) {
+          // General never shows "####" in Excel: it rounds to the column, then goes to E notation.
+          const room = w - 4 * z - (st.cf?.icon ? size * 1.3 : 0);
+          if (textWidth(text, size, f.bold) > room) {
+            text = fitGeneral(shown.general, (s) => textWidth(s, size, f.bold) <= room, text.includes(",") ? "," : ".") ?? text;
+          }
+        }
         if (!wrap && !st.cf?.icon) {
           const est = textWidth(text, size, f.bold);
           if (shown.num && est > w - 4 * z && !shown.err) text = "#".repeat(Math.max(1, Math.floor((w - 4 * z) / (size * 0.5))));
@@ -527,7 +568,8 @@ export default class Sheet extends View {
       if (d.kind === "chart") {
         return div().id(`dr-${paneKey}-${i}`).absolute().left(x).top(y).w(w).h(h).overflow_hidden()
           .child(d.xml ? drawChart(d.xml, {
-            width: w, height: h, zoom: z, theme: this.wb.theme, key: `${this.file}|${this.tab}-${i}`,
+            // This view's id too: a workbook changed on disk and opened again must not get the old chart.
+            width: w, height: h, zoom: z, theme: this.wb.theme, key: `${this.id}|${this.file}|${this.tab}-${i}`,
             format: (v, code) => formatValue(v, code || "General", { date1904: this.wb.date1904, locale: this.locale }).text,
             lookup: (ref, isNum) => this.refValues(ref, isNum),
           }) : div());
@@ -644,6 +686,16 @@ export default class Sheet extends View {
         .child(div().text_color(this.state === "error" ? t.blocked : t.dim).max_w(520).whitespace_normal().text_center().child(this.state === "error" ? this.error : `${this.stage ?? "Opening"}…`)));
     }
     const sh = this.sh;
+    if (!sh && this.sheetError) {
+      // One sheet failed to read: say why, and keep the other sheets a click away.
+      const others = this.wb.sheets.map((s, i) => ({ s, i })).filter(({ s, i }) => !s.hidden && i !== this.tab);
+      return shell(v_flex().size_full().items_center().justify_center().gap(10)
+        .child(div().text_color(t.blocked).max_w(520).whitespace_normal().text_center().child(this.sheetError))
+        .child(h_flex().gap(6).flex_wrap().justify_center().children(others.map(({ s, i }) =>
+          div().id(`err-tab-${i}`).h(24).px(10).flex().items_center().rounded(5).text_size(12.5).cursor_pointer()
+            .border(1).border_color(t.border).hover((st) => st.bg(t.hover))
+            .on_click((_ev, cx) => this.switchSheet(i, cx)).child(s.name)))));
+    }
     if (!sh) return shell(v_flex().size_full().items_center().justify_center().text_color(t.dim).child("Reading the sheet…"));
     const cell = sh.cells.get(key(this.sel.r, this.sel.c));
     const raw = cell ? (cell.f ? "=" + cell.f : cell.text !== undefined ? cell.text : isErr(cell.v) ? cell.v.error : cell.v === null || cell.v === undefined ? "" : String(cell.v)) : "";
@@ -701,7 +753,7 @@ export default class Sheet extends View {
           return div().id(`tab-${i}`).relative().h(24).px(12).flex().items_center().rounded(5).text_size(12.5)
             .bg(on ? t.surface : "#00000000").text_color(on ? t.foreground : t.muted).when(on, (e2) => e2.font_semibold().border(1).border_color(t.border))
             .hover((st) => st.bg(t.hover))
-            .on_click((_ev, cx) => { if (i !== this.tab) cx.spawn(async (cx2) => { await this.openSheet(i, cx2); cx2.notify(); }); })
+            .on_click((_ev, cx) => { if (i !== this.tab) this.switchSheet(i, cx); })
             .child(s.name)
             .when(Boolean(color), (e2) => e2.child(div().absolute().left(6).right(6).bottom(1).h(3).rounded_full().bg(color)));
         })))));
@@ -718,8 +770,9 @@ function iconFor(icon, size) {
   return div().flex_none().mr(4).text_size(size).text_color(col).child(glyph);
 }
 
-// A CSV as a one-sheet workbook with Excel's default look.
-function csvWorkbook(csv, file) {
+// A CSV as a one-sheet workbook with Excel's default look. Async: it walks every cell, and a big
+// file would otherwise run past the host's time limit without a yield.
+async function csvWorkbook(csv, file, tick) {
   const font = { name: "Calibri", size: 11, bold: false, italic: false, underline: false, strike: false, color: "#000000" };
   const sheet = {
     name: base(file).replace(/\.[^.]+$/, ""), index: 0, cells: csv.cells, maxRow: Math.max(0, csv.rows - 1), maxCol: csv.maxCol,
@@ -729,7 +782,9 @@ function csvWorkbook(csv, file) {
   };
   // Columns as wide as their content (up to a limit), so a CSV reads without resizing.
   const widest = [];
+  let n = 0;
   for (const c of csv.cells.values()) {
+    if ((++n & 1023) === 0) await tick(true);
     if (c.r > 2000) continue;
     const longest = Math.max(...String(c.text).split("\n").map((l) => l.length));
     widest[c.c] = Math.max(widest[c.c] ?? 0, longest);
