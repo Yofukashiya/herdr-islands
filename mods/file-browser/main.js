@@ -13,7 +13,9 @@ import { FileViewer } from "./viewer.js";
 import { FileMenu, menuItems, menuHeight } from "./menu.js";
 
 // One spelling per path, so git's "C:/repo/a.js" and a Windows pane's "c:\repo" find the same mark.
-const normPath = (s) => s.replace(/\\/g, "/").replace(/^([a-z]):/, (_m, d) => d.toUpperCase() + ":");
+// Only a Windows path ("C:\", "\\server") is respelled: on macOS and Linux "\" is part of a name.
+// By the path's shape, not the window's platform: a folder on another machine is that machine's.
+const normPath = (s) => /^([A-Za-z]:|\\\\)/.test(s) ? s.replace(/\\/g, "/").replace(/^([a-z]):/, (_m, d) => d.toUpperCase() + ":") : s;
 
 /** The folder the tree shows: the focused terminal's. A pane with no folder of its own (a file
  *  opened from the tree, any mod's tab) keeps `shown`, the folder already in the tree for this
@@ -21,7 +23,8 @@ const normPath = (s) => s.replace(/\\/g, "/").replace(/^([a-z]):/, (_m, d) => d.
 function location(shown) {
   const space = spaces().find(s => s.active), f = focused();
   const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
-  const own = pane?.cwd || f?.cwd;
+  // A mod pane has no folder; focused().cwd may then be an agent block's elsewhere in the layout.
+  const own = pane?.mod ? null : pane?.cwd || f?.cwd;
   if (!own && shown?.cwd && shown.space === space?.id) return { cwd: shown.cwd, on: shown.on, space: shown.space };
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
   // One spelling: a Windows terminal reports "D:\repo" while its space says "D:/repo".
