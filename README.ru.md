@@ -115,7 +115,7 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 | [`agent-list`](mods/agent-list/README.md) | Агенты, подсмотр экрана агента при наведении | вместо `agents` |
 | [`tab-bar`](mods/tab-bar/README.md) | Вкладки-пилюли, кнопки Files / Changes / Mods, кнопки окна | вместо `tabs` |
 | [`pane-header`](mods/pane-header/README.md) | Шапка панели с линией фокуса | шапка панели |
-| [`file-browser`](mods/file-browser/README.md) | Панель Files: открывает файлы во вкладках, меню по правому клику | вместо `files` |
+| [`file-browser`](mods/file-browser/README.md) | Панель Files: открывает файлы во вкладках, меню по правому клику, статус git как в IDE | вместо `files` |
 | [`git-changes`](mods/git-changes/README.md) | Панель Changes: незакоммиченные файлы, диффы, коммит | вместо `changes` |
 | [`mod-manager`](mods/mod-manager/README.md) | Панель Mods | диалог: `mod.open` |
 | [`status-bar`](mods/status-bar/README.md) | Лимиты планов, CPU, память | сам встаёт вниз окна |
@@ -225,6 +225,11 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
   - **Show in Explorer / Finder**;
   - **Copy path** / **Copy relative path**;
   - **Open terminal here** — терминал в этой папке.
+- **Статус git** виден, как в IDE:
+  - имя изменённого файла окрашено по статусу, а после него стоит буква, как в VS Code: `M` изменён
+    (янтарный), `A` добавлен и `U` не отслеживается (зелёный), `D` удалён и `!` конфликт (красный);
+  - папка с изменениями внутри окрашена так же и отмечена точкой, даже свёрнутая;
+  - игнорируемые файлы и папки приглушены.
 
 Чтобы открывать файлы из этого меню в терминальном редакторе, впиши
 `{ "terminal_editor": ["nvim"] }` в `mods/file-browser/settings.json`.

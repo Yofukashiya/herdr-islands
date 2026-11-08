@@ -220,5 +220,6 @@ formatting, tables, charts, pictures and comments, with sheet tabs at the bottom
   switches one off and back on, and changes theme, accent, opacity and backdrop live.
 - **Spreadsheets:** clicking an `.xlsx` in Files opens it in a tab with its colors, merges, formats and
   charts.
-- **Checks:** `herdr-app check` passes for all eleven mods, and switching to another layout and back
-  leaves that other layout untouched.
+- **Checks:** `herdr-app check` passes for all eleven mods, `node --test` passes (the tests in
+  `tests/` cover mod logic that needs no Herdr, such as Files' git marks), and switching to another
+  layout and back leaves that other layout untouched.

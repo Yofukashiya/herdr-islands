@@ -112,7 +112,7 @@ To uninstall, switch to another layout (Ctrl+Shift+L), then delete `layouts/isla
 | [`agent-list`](mods/agent-list/README.md) | Agents, with a preview of an agent's screen on hover | replaces `agents` |
 | [`tab-bar`](mods/tab-bar/README.md) | Pill tabs, the Files / Changes / Mods buttons, window buttons | replaces `tabs` |
 | [`pane-header`](mods/pane-header/README.md) | Pane header with a focus line | the pane header |
-| [`file-browser`](mods/file-browser/README.md) | The Files panel: opens files in tabs, right-click menu | replaces `files` |
+| [`file-browser`](mods/file-browser/README.md) | The Files panel: opens files in tabs, right-click menu, git status as in an IDE | replaces `files` |
 | [`git-changes`](mods/git-changes/README.md) | The Changes panel: uncommitted files, diffs, commit | replaces `changes` |
 | [`mod-manager`](mods/mod-manager/README.md) | The Mods panel | a dialog: `mod.open` |
 | [`status-bar`](mods/status-bar/README.md) | Plan limits, CPU, memory | docks at the bottom by itself |
@@ -216,6 +216,11 @@ name only shows after a restart.
   - **Show in Explorer / Finder**;
   - **Copy path** / **Copy relative path**;
   - **Open terminal here**.
+- **Git status** shows the way it does in an IDE:
+  - a changed file's name takes its color, with VS Code's letter after it: `M` modified (amber), `A`
+    added and `U` untracked (green), `D` deleted and `!` in conflict (red);
+  - a folder with changes inside gets the same color and a dot, even when it's collapsed;
+  - ignored files and folders are dimmed.
 
 To open files in a terminal editor from that menu, put `{ "terminal_editor": ["nvim"] }` in
 `mods/file-browser/settings.json`.
