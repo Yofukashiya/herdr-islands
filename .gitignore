@@ -1,0 +1,11 @@
+# Herdr writes these at runtime
+.cache/
+data/
+shared.json
+gpui-kit.d.ts
+herdr.d.ts
+jsconfig.json
+# OS / tools
+.DS_Store
+Thumbs.db
+__pycache__/
