@@ -118,11 +118,17 @@ for m in $MODS; do
     # triggers then finds every new module already there. Interrupted: run it again.
     kept=""
     if [ -f "$to/settings.json" ]; then kept=$STAGE/settings-$m.json; cp "$to/settings.json" "$kept"; fi
-    for f in "$SRC/mods/$m"/*; do
-      [ "${f##*/}" = main.js ] || cp -R "$f" "$to/"
-    done
+    # find, not a glob: it takes hidden files too and copes with an empty folder.
+    find "$SRC/mods/$m" -mindepth 1 -maxdepth 1 ! -name main.js -exec cp -R {} "$to/" \;
     cp "$SRC/mods/$m/main.js" "$to/main.js"
     if [ -n "$kept" ]; then cp "$kept" "$to/settings.json"; fi
+    # Files this release no longer has go too: a removed module would linger. The person's
+    # settings, the files Herdr generates and hidden ones (cache, update log) stay.
+    for f in "$to"/*; do
+      [ -e "$f" ] || continue
+      case ${f##*/} in settings.json|gpui-kit.d.ts|jsconfig.json) continue ;; esac
+      [ -e "$SRC/mods/$m/${f##*/}" ] || rm -rf "$f"
+    done
     say "  updated    $m"
   else
     cp -R "$SRC/mods/$m" "$STAGE/new-$m"
