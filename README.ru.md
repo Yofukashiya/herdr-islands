@@ -84,7 +84,8 @@ Islands сам сообщает о новых релизах. Раз в сутк
 
 Вручную, или если ты поставил только некоторые моды (уведомлениям нужен `sidebar-chrome` или
 `mod-manager`), запусти команду установки ещё раз. С `--update` она обновит только то, что у тебя есть,
-и не переключит раскладку:
+и не переключит раскладку. Если у тебя стоит раскладка Islands, она ещё поставит моды, которые нужны
+новой версии раскладки и которых у тебя пока нет:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) --update
@@ -103,7 +104,7 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 Чтобы удалить, переключись на другую раскладку (Ctrl+Shift+L) и удали в `~/.config/herdr-app`:
 - `layouts/islands.json`, `layouts/islands.svg` и `backgrounds/islands-grid.png`;
 - папки в `mods`: `sidebar-chrome`, `space-list`, `agent-list`, `tab-bar`, `pane-header`, `file-browser`,
-  `mod-manager`, `status-bar`, `agent-radar`, `sheet-viewer`.
+  `git-changes`, `mod-manager`, `status-bar`, `agent-radar`, `sheet-viewer`.
 
 ## Что внутри
 
@@ -115,6 +116,7 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 | [`tab-bar`](mods/tab-bar/README.md) | Вкладки-пилюли, кнопки Files / Changes / Mods, кнопки окна | вместо `tabs` |
 | [`pane-header`](mods/pane-header/README.md) | Шапка панели с линией фокуса | шапка панели |
 | [`file-browser`](mods/file-browser/README.md) | Панель Files: открывает файлы во вкладках, меню по правому клику | вместо `files` |
+| [`git-changes`](mods/git-changes/README.md) | Панель Changes: незакоммиченные файлы, диффы, коммит | вместо `changes` |
 | [`mod-manager`](mods/mod-manager/README.md) | Панель Mods | диалог: `mod.open` |
 | [`status-bar`](mods/status-bar/README.md) | Лимиты планов, CPU, память | сам встаёт вниз окна |
 | [`agent-radar`](mods/agent-radar/README.md) | Выдвижная панель агентов у края окна | плавающий блок |
@@ -301,5 +303,5 @@ opencode.ai, cursor.com. Эндпоинты недокументированны
 - моды Islands: MIT, © Cody Packer ([LICENSE-islands-MIT.txt](LICENSE-islands-MIT.txt));
 - `status-bar`, на основе DanielFGray/herdr-config: Apache-2.0
   ([LICENSE-usage-Apache-2.0.txt](LICENSE-usage-Apache-2.0.txt));
-- `file-browser` и то, что Islands взял из встроенных модов Herdr: Herdr, Apache-2.0;
+- `file-browser`, `git-changes` и то, что Islands взял из встроенных модов Herdr: Herdr, Apache-2.0;
 - fflate для распаковки: MIT ([mods/sheet-viewer/LICENSE-fflate.txt](mods/sheet-viewer/LICENSE-fflate.txt)).

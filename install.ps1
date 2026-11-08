@@ -20,7 +20,7 @@
 
   $repo = 'Yofukashiya/herdr-islands'
   $all = 'sidebar-chrome', 'space-list', 'agent-list', 'tab-bar', 'pane-header',
-         'file-browser', 'mod-manager', 'status-bar', 'agent-radar', 'sheet-viewer'
+         'file-browser', 'git-changes', 'mod-manager', 'status-bar', 'agent-radar', 'sheet-viewer'
   # Where a mod installed on its own goes; the mod's README has the details.
   $hints = @{
     'sidebar-chrome' = 'In your layout, use it for the sidebar''s "brand" block (and "footer" with props {"footer": true}).'
@@ -29,6 +29,7 @@
     'tab-bar'        = 'In your layout, use it where the tab bar has "tabs".'
     'pane-header'    = 'In your layout, set it as the pane header: "pane": {"header": {"content": {"mod": "pane-header"}}}.'
     'file-browser'   = 'In your layout, use it where the side panel has "files".'
+    'git-changes'    = 'In your layout, use it where the side panel has "changes".'
     'mod-manager'    = 'Open it with: herdr-app do mod.open --name mod-manager (its README shows a key for it).'
     'status-bar'     = 'Herdr docks it at the bottom of the layout you are looking at.'
     'agent-radar'    = 'Add it to your layout''s root: "floating": [{"id": "radar", "content": {"mod": "agent-radar"}, "edge": "right", "align": "center", "peek": 30}].'
@@ -63,7 +64,8 @@
   if ($unknown) { Fail "Unknown mod: $($unknown -join ', '). Mods: $($all -join ', ')."; return }
 
   $target = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { Join-Path $HOME '.config\herdr-app' }
-  # full: the layout and every mod; pick: the named mods; update: whatever of this is installed.
+  # full: the layout and every mod; pick: the named mods; update: whatever of this is installed
+  # (plus, below, any mod a new Islands layout needs).
   if ($update) {
     $mode = 'update'
     $mods = @($all | Where-Object { Test-Path (Join-Path $target "mods\$_\mod.json") })
@@ -96,6 +98,12 @@
       Expand-Archive $zip (Join-Path $stage 'src') -Force
       $src = (Get-ChildItem (Join-Path $stage 'src') -Directory | Select-Object -First 1).FullName
     }
+    # An update also installs a mod the new Islands layout uses that isn't here yet (one a release
+    # added): the layout is replaced below, and its block would point at a missing mod.
+    if ($mode -eq 'update' -and (Test-Path (Join-Path $target 'layouts\islands.json'))) {
+      $placed = @([regex]::Matches([IO.File]::ReadAllText((Join-Path $src 'layouts\islands.json')), '"mod"\s*:\s*"([A-Za-z0-9_-]+)"') | ForEach-Object { $_.Groups[1].Value })
+      $mods = @($mods) + @($all | Where-Object { $placed -contains $_ -and $mods -notcontains $_ })
+    }
 
     foreach ($m in $mods) {
       $from = Join-Path $src "mods\$m"
@@ -120,9 +128,10 @@
       } else {
         $tmp = Join-Path $stage "new-$m"
         Copy-Item -Recurse $from $tmp
-        if ($mode -eq 'full') {
-          # The Islands layout places every mod itself; "none" keeps Herdr from also docking a new mod
-          # into whatever layout is on screen right now (it does that once, the first time it sees a mod).
+        if ($mode -ne 'pick') {
+          # The Islands layout places every mod itself (a full install, or one an update adds for the
+          # layout); "none" keeps Herdr from also docking a new mod into whatever layout is on screen
+          # right now (it does that once, the first time it sees a mod).
           $meta = Join-Path $tmp 'mod.json'
           $json = [IO.File]::ReadAllText($meta) -replace '"place"\s*:\s*"[a-z]+"', '"place": "none"'
           [IO.File]::WriteAllText($meta, $json)

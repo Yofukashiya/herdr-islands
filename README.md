@@ -81,7 +81,8 @@ To get releases without being asked, turn on **Install updates automatically** i
 new release's installer by itself.
 
 By hand, or if you installed only some mods (the notices need `sidebar-chrome` or `mod-manager`), run
-the install command again. With `--update` it updates only what you have, without switching layouts:
+the install command again. With `--update` it updates only what you have, without switching layouts.
+If you have the Islands layout, it also installs any mod the new layout uses that you don't have yet:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) --update
@@ -99,8 +100,8 @@ kept. The `islands` layout file itself is replaced, so blocks you switched off i
 
 To uninstall, switch to another layout (Ctrl+Shift+L), then delete `layouts/islands.json`,
 `layouts/islands.svg`, `backgrounds/islands-grid.png` and these folders in `~/.config/herdr-app/mods`:
-`sidebar-chrome`, `space-list`, `agent-list`, `tab-bar`, `pane-header`, `file-browser`, `mod-manager`,
-`status-bar`, `agent-radar`, `sheet-viewer`.
+`sidebar-chrome`, `space-list`, `agent-list`, `tab-bar`, `pane-header`, `file-browser`, `git-changes`,
+`mod-manager`, `status-bar`, `agent-radar`, `sheet-viewer`.
 
 ## What's inside
 
@@ -112,6 +113,7 @@ To uninstall, switch to another layout (Ctrl+Shift+L), then delete `layouts/isla
 | [`tab-bar`](mods/tab-bar/README.md) | Pill tabs, the Files / Changes / Mods buttons, window buttons | replaces `tabs` |
 | [`pane-header`](mods/pane-header/README.md) | Pane header with a focus line | the pane header |
 | [`file-browser`](mods/file-browser/README.md) | The Files panel: opens files in tabs, right-click menu | replaces `files` |
+| [`git-changes`](mods/git-changes/README.md) | The Changes panel: uncommitted files, diffs, commit | replaces `changes` |
 | [`mod-manager`](mods/mod-manager/README.md) | The Mods panel | a dialog: `mod.open` |
 | [`status-bar`](mods/status-bar/README.md) | Plan limits, CPU, memory | docks at the bottom by itself |
 | [`agent-radar`](mods/agent-radar/README.md) | A drawer of agents at the window edge | a floating block |
@@ -288,5 +290,5 @@ See [CHANGELOG.md](CHANGELOG.md).
 - the Islands mods: MIT, © Cody Packer ([LICENSE-islands-MIT.txt](LICENSE-islands-MIT.txt));
 - `status-bar`, from DanielFGray/herdr-config: Apache-2.0
   ([LICENSE-usage-Apache-2.0.txt](LICENSE-usage-Apache-2.0.txt));
-- `file-browser` and the parts Islands took from Herdr's built-in mods: Herdr, Apache-2.0;
+- `file-browser`, `git-changes` and the parts Islands took from Herdr's built-in mods: Herdr, Apache-2.0;
 - fflate, used for unzipping: MIT ([mods/sheet-viewer/LICENSE-fflate.txt](mods/sheet-viewer/LICENSE-fflate.txt)).

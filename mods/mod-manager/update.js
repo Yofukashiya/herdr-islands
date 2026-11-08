@@ -1,7 +1,7 @@
 // Herdr Islands updates: is there a newer release on GitHub, and installing it with the repo's own
-// installer in its update mode (only what's installed is updated; settings stay). The same file
-// lives in sidebar-chrome (checks in the background) and mod-manager (shows it, installs on a click),
-// so each mod still works on its own. Keep the two copies identical.
+// installer in its update mode (what's installed is updated, plus any mod a new Islands layout needs;
+// settings stay). The same file lives in sidebar-chrome (checks in the background) and mod-manager
+// (shows it, installs on a click), so each mod still works on its own. Keep the two copies identical.
 import { exec, appHome, home, readTextFile, writeTextFile, window as hwin } from "herdr";
 
 export const REPO = "Yofukashiya/herdr-islands";

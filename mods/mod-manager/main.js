@@ -32,6 +32,7 @@ const ABOUT = {
   "tab-bar": "Tab pills, panel buttons, window buttons",
   "pane-header": "Pane header with the focus line",
   "file-browser": "Files panel: opens files in tabs, right-click menu",
+  "git-changes": "Changes panel: uncommitted files, diffs, commit",
   "mod-manager": "This panel",
   "status-bar": "Status bar: plan limits, CPU, memory",
   "agent-radar": "Agents drawer on the window edge",
