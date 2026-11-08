@@ -15,13 +15,20 @@ import { FileMenu, menuItems, menuHeight } from "./menu.js";
 // One spelling per path, so git's "C:/repo/a.js" and a Windows pane's "c:\repo" find the same mark.
 const normPath = (s) => s.replace(/\\/g, "/").replace(/^([a-z]):/, (_m, d) => d.toUpperCase() + ":");
 
-function location() {
+/** The folder the tree shows: the focused terminal's. A pane with no folder of its own (a file
+ *  opened from the tree, any mod's tab) keeps `shown`, the folder already in the tree for this
+ *  space. Falling back to the space's folder there would reload the tree on every file opened. */
+function location(shown) {
   const space = spaces().find(s => s.active), f = focused();
   const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
+  const own = pane?.cwd || f?.cwd;
+  if (!own && shown?.cwd && shown.space === space?.id) return { cwd: shown.cwd, on: shown.on, space: shown.space };
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
+  // One spelling: a Windows terminal reports "D:\repo" while its space says "D:/repo".
+  const cwd = own || space?.folder;
+  return { cwd: cwd ? normPath(cwd) : cwd, on, space: space?.id };
 }
-const key = () => JSON.stringify(location());
+const key = (shown) => JSON.stringify(location(shown));
 const PER_FOLDER = 500, TOTAL = 5000;
 
 async function directory(path, on) {
@@ -86,7 +93,7 @@ export default class Files extends View {
   }
 
   current(context) {
-    return this.context === context && key() === context.key;
+    return this.context === context && key(context) === context.key;
   }
 
   async loadFolder(path, context) {
@@ -99,11 +106,11 @@ export default class Files extends View {
   }
 
   refresh(cx) {
-    const { cwd, on } = location(), next = key();
+    const where = location(this.context), { cwd, on } = where, next = JSON.stringify(where);
     if (next !== this.context?.key) {
       if (this.context) this.saved.set(this.context.key, { folders: this.folders });
       const saved = this.saved.get(next);
-      this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
+      this.context = { key: next, ...where }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.watched = null; this.error = null; this.limited = false;
       this.loading = false;
     }
@@ -187,7 +194,7 @@ export default class Files extends View {
   render(cx) {
     if (this.viewer) return this.viewer.render(cx);
     if (this.menu) return this.menu.render(cx);
-    if (key() !== this.context?.key) this.refresh(cx);
+    if (key(this.context) !== this.context?.key) this.refresh(cx);
     const t = theme();
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)

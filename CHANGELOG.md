@@ -6,6 +6,13 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Files:** opening a file no longer reloads the whole tree (an empty "Loading files…" panel,
+  open folders closed). A file's tab has no folder of its own, so the panel switched to the
+  space's folder, which Windows spells `D:/repo` while the terminal says `D:\repo`. Now a tab
+  without a folder keeps the one already shown, and both spellings are the same folder.
+
 ## [1.2.2] - 2026-11-08
 
 Fixes from CodeRabbit's review of 1.2.0. 1.2.1 was tagged but not published as a release; this
