@@ -1,7 +1,0 @@
-{
-  "opacity": 0.8,
-  "main_opacity": 0.75,
-  "backdrop": "backgrounds/islands-grid.png",
-  "radar": true,
-  "accent": "space"
-}
