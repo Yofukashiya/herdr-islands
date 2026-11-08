@@ -20,6 +20,7 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec, readTextFile, home, theme, shared, setShared, props, run, nextCommand, openOverlay, closeOverlay, appHome, spaces, agents, window, keys, settings } from "herdr";
+import * as fs from "fs/promises";
 import { UsageService } from "./service.js";
 import { resetIn, ago, tightest, pace, describePace } from "./format.js";
 import { forPlatform, HISTORY, INTERVAL as SYSTEM_INTERVAL, memoryPercent, gigabytes, uptime } from "./system.js";
@@ -191,7 +192,9 @@ export default class Usage extends View {
       used += add;
       keep.add(id);
     }
-    this.showSystem = keep.has("cpu") || keep.has("mem") || keep.has("load");
+    // Until the first reading lands there are no system parts to keep: go on sampling, or a failed
+    // first sample would leave CPU and MEM off until the mod reloads.
+    this.showSystem = !sys || keep.has("cpu") || keep.has("mem") || keep.has("load");
 
     const order = ["space", "branch", "agents", "usage", "cpu", "mem", "load", "palette"];
     const pick = (side) => order.map((id) => parts.find((p) => p[0] === id && p[1] === side && keep.has(id))).filter(Boolean).map((p) => p[3]());
@@ -504,8 +507,9 @@ async function herdrIo() {
     home: home(),
     env: await readEnv(),
     now: () => Date.now(),
-    // A missing file reads as null, as the providers expect.
-    readText: (path) => Promise.resolve().then(() => readTextFile(path)).catch(() => null),
+    // A missing file reads as null, as the providers expect. fs.readFile, not readTextFile: that one
+    // stops at 1 MiB, and ~/.claude.json (where the account email is) grows past it with history.
+    readText: (path) => Promise.resolve().then(() => fs.readFile(path, "utf8")).catch(() => null),
     exec: async (cmd, args) => {
       const out = await exec(cmd, args);
       return { code: out.code, stdout: out.stdout };

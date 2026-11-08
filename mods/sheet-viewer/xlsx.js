@@ -493,7 +493,12 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
     const type = rule.attrs.type;
     const stop = rule.attrs.stopIfTrue === "1";
     const cells = [];
-    for (const rg of ranges) for (let r = rg.r1; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) cells.push({ rg, r, c, v: sheet.cells.get(key(r, c))?.v ?? null });
+    // Ranges can cover a whole sheet (A:Z on 100 000 rows): every loop over them yields now and then.
+    let spin = 0;
+    for (const rg of ranges) for (let r = rg.r1; r <= rg.r2; r++) {
+      for (let c = rg.c1; c <= rg.c2; c++) cells.push({ rg, r, c, v: sheet.cells.get(key(r, c))?.v ?? null });
+      if ((++spin & 255) === 0) await tick(true);
+    }
     const nums = cells.filter((x) => typeof x.v === "number").map((x) => x.v);
     const hit = (x, patch) => { put(x.r, x.c, patch); if (stop) stopped.add(key(x.r, x.c)); };
     await tick(true);
@@ -503,6 +508,7 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
       if (!nums.length || colors.length < 2) continue;
       const th = cfvos.map((v) => threshold(v, nums, (f) => evaluate(f, ctx)));
       for (const x of cells) {
+        if ((++spin & 1023) === 0) await tick(true);
         if (typeof x.v !== "number") continue;
         let col;
         if (colors.length === 2) col = lerpColor(colors[0], colors[1], th[1] === th[0] ? 1 : (x.v - th[0]) / (th[1] - th[0]));
@@ -518,6 +524,7 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
       const minLen = Number(db.attrs.minLength ?? 10) / 100, maxLen = Number(db.attrs.maxLength ?? 90) / 100;
       const showValue = db.attrs.showValue !== "0";
       for (const x of cells) {
+        if ((++spin & 1023) === 0) await tick(true);
         if (typeof x.v !== "number") continue;
         const k = hi === lo ? 1 : Math.max(0, Math.min(1, (x.v - lo) / (hi - lo)));
         hit(x, { bar: { pct: minLen + (maxLen - minLen) * k, color: col }, hideValue: !showValue });
@@ -531,6 +538,7 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
       const th = cfvos.map((v) => threshold(v.attrs.type === "percent" ? v : v, nums, (f) => evaluate(f, ctx)));
       const n = th.length;
       for (const x of cells) {
+        if ((++spin & 1023) === 0) await tick(true);
         if (typeof x.v !== "number") continue;
         let level = 0;
         for (let i = 1; i < n; i++) if (x.v >= th[i]) level = i;
@@ -540,6 +548,26 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
     } else {
       const d = style(rule.attrs.dxfId);
       const fs = kids(rule, "formula").map(textOf);
+      // What rank, average and duplicate rules compare against, worked out once per rule: per cell
+      // it was O(n²), minutes for a duplicates rule on a few thousand rows in this interpreter.
+      let edge = null, avg = 0, sd = 0;
+      const counts = new Map();
+      if (type === "top10" && nums.length) {
+        const rank = Number(rule.attrs.rank ?? 10), pct = rule.attrs.percent === "1", bottom = rule.attrs.bottom === "1";
+        const sorted = nums.slice().sort((p, q) => (bottom ? p - q : q - p));
+        const count = pct ? Math.max(1, Math.floor((sorted.length * rank) / 100)) : rank;
+        edge = sorted[Math.min(count, sorted.length) - 1];
+      } else if (type === "aboveAverage" && nums.length) {
+        avg = nums.reduce((s, q) => s + q, 0) / nums.length;
+        sd = rule.attrs.stdDev ? Math.sqrt(nums.reduce((s, q) => s + (q - avg) ** 2, 0) / nums.length) * Number(rule.attrs.stdDev) : 0;
+      } else if (type === "duplicateValues" || type === "uniqueValues") {
+        for (const y of cells) {
+          if ((++spin & 1023) === 0) await tick(true);
+          if (y.v === null) continue;
+          const k = String(y.v).toLowerCase();
+          counts.set(k, (counts.get(k) ?? 0) + 1);
+        }
+      }
       for (const x of cells) {
         let ok = false;
         const v = x.v;
@@ -569,21 +597,16 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
         else if (type === "containsErrors") ok = v && typeof v === "object" && "error" in v;
         else if (type === "notContainsErrors") ok = !(v && typeof v === "object" && "error" in v);
         else if (type === "top10") {
-          const rank = Number(rule.attrs.rank ?? 10), pct = rule.attrs.percent === "1", bottom = rule.attrs.bottom === "1";
-          const sorted = nums.slice().sort((p, q) => (bottom ? p - q : q - p));
-          const count = pct ? Math.max(1, Math.floor((sorted.length * rank) / 100)) : rank;
-          const edge = sorted[Math.min(count, sorted.length) - 1];
-          ok = typeof v === "number" && (bottom ? v <= edge : v >= edge);
+          const bottom = rule.attrs.bottom === "1";
+          ok = typeof v === "number" && edge !== null && (bottom ? v <= edge : v >= edge);
         } else if (type === "aboveAverage") {
           if (typeof v !== "number" || !nums.length) ok = false;
           else {
-            const avg = nums.reduce((s, q) => s + q, 0) / nums.length;
             const above = rule.attrs.aboveAverage !== "0", eq = rule.attrs.equalAverage === "1";
-            const sd = rule.attrs.stdDev ? Math.sqrt(nums.reduce((s, q) => s + (q - avg) ** 2, 0) / nums.length) * Number(rule.attrs.stdDev) : 0;
             ok = above ? (eq ? v >= avg + sd : v > avg + sd) : (eq ? v <= avg - sd : v < avg - sd);
           }
         } else if (type === "duplicateValues" || type === "uniqueValues") {
-          const count = cells.filter((y) => y.v !== null && String(y.v).toLowerCase() === String(v ?? "").toLowerCase()).length;
+          const count = v === null ? 0 : counts.get(String(v).toLowerCase()) ?? 0;
           ok = v !== null && v !== "" && (type === "duplicateValues" ? count > 1 : count === 1);
         } else if (type === "timePeriod") ok = false;
         if (ok) hit(x, d);

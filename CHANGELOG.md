@@ -6,6 +6,51 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-08
+
+Fixes from CodeRabbit's reviews of the whole code. 1.1.0 was tagged but never published as a release; this
+is the first release with update notices.
+
+### Security
+
+- `sheet-viewer`: file paths given to PowerShell now escape the curly single quotes (`‘ ’ ‚ ‛`)
+  as well, which PowerShell also reads as quotes. A crafted file name could run a command when the
+  sheet was opened, and an ordinary name like `John’s report.xlsx` failed to open at all. The
+  update launcher quotes its log path the same way.
+
+### Fixed
+
+- **`agent-list`:**
+  - clicking a sub-agent row crashed (the hover card's field shadowed the `peek` method);
+  - pinning an agent now closes its preview card and stops reading its screen;
+  - preview reads no longer overlap on slow (remote) agents.
+- **`sheet-viewer`:**
+  - opened sheets with whole-column conditional formatting on large ranges (100 000 rows) instead
+    of stalling on "Reading the sheet…";
+  - rank, average and duplicate rules are worked out once per rule instead of per cell (O(n²)
+    before);
+  - a sheet that fails to read shows why, with the other sheets to pick, and a slow sheet can no
+    longer replace the one picked after it;
+  - big CSV files yield to the host while sizing columns;
+  - a workbook opened again after it changed on disk no longer shows the old charts;
+  - numbers in the General format shrink to the column (fewer decimals, then E notation) as in
+    Excel, instead of showing `####`.
+- **`file-browser`:** git marks (A, M, D, U) show on Windows, where git and the pane spell paths
+  differently.
+- **`mod-manager`:**
+  - quick changes in Look are written in the order chosen;
+  - mods added while the list refreshes are picked up;
+  - a clicked Check for updates shows its own answer;
+  - switching off a floating block or pane header that's gone no longer leaves it half-parked.
+- **`status-bar`:**
+  - reads `~/.claude.json` past 1 MiB (for the account email);
+  - keeps sampling CPU and memory when the first sample fails.
+- **`tab-bar`:** no longer breaks on macOS when the zoom setting is missing.
+- **Updates:**
+  - a failed download of the installer is reported at once instead of after 5 minutes;
+  - updating a mod in place copies `main.js` last, so Herdr reloads it with all its new files.
+- **`install.sh`:** a trailing `--ref` with no value gives a clear error.
+
 ## [1.1.0] - 2026-11-08
 
 ### Added
@@ -97,6 +142,7 @@ First release.
 - **Status bar:** every reload of the mod asked all services again, so Claude answered "rate limited";
   the request schedule now survives reloads.
 
-[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Yofukashiya/herdr-islands/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Yofukashiya/herdr-islands/releases/tag/v1.0.0

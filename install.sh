@@ -43,7 +43,9 @@ PICKED=""
 while [ $# -gt 0 ]; do
   case $1 in
     --update) UPDATE=1 ;;
-    --ref) shift; REF=${1:-} ;;
+    # A trailing --ref with no value leaves REF empty, which the check below reports (a second
+    # shift with nothing left would end the script silently under set -e).
+    --ref) if [ $# -ge 2 ]; then shift; REF=$1; else REF=""; break; fi ;;
     *) PICKED="$PICKED $(printf '%s' "$1" | tr ',' ' ')" ;;
   esac
   shift
@@ -111,10 +113,15 @@ fi
 for m in $MODS; do
   to=$TARGET/mods/$m
   if [ -d "$to" ]; then
-    # Update in place (Herdr reloads changed files); keep the person's settings.
+    # Update in place (Herdr reloads changed files); keep the person's settings. main.js goes
+    # last: Herdr reloads a mod on each file that changes, and the reload the entry point
+    # triggers then finds every new module already there. Interrupted: run it again.
     kept=""
     if [ -f "$to/settings.json" ]; then kept=$STAGE/settings-$m.json; cp "$to/settings.json" "$kept"; fi
-    cp -R "$SRC/mods/$m/." "$to/"
+    for f in "$SRC/mods/$m"/*; do
+      [ "${f##*/}" = main.js ] || cp -R "$f" "$to/"
+    done
+    cp "$SRC/mods/$m/main.js" "$to/main.js"
     if [ -n "$kept" ]; then cp "$kept" "$to/settings.json"; fi
     say "  updated    $m"
   else

@@ -5,6 +5,10 @@ reviews:
   profile: chill
   high_level_summary: true
   poem: false
+  pre_merge_checks:
+    # Mods follow Herdr's shipped mods: comments where the code needs them, not a docstring each.
+    docstrings:
+      mode: "off"
   auto_review:
     enabled: true
     drafts: false

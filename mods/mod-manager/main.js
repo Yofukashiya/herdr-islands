@@ -129,7 +129,8 @@ export default class Mods extends View {
   }
 
   refresh(cx) {
-    if (this.busy) return;
+    // Asked again while busy (a copy lands file by file): run once more when this one ends.
+    if (this.busy) { this.again = true; return; }
     this.busy = true;
     cx.spawn(async (cx) => {
       const home = appHome();
@@ -170,6 +171,7 @@ export default class Mods extends View {
         this.errors = errs;
       } catch {}
       this.busy = false;
+      if (this.again) { this.again = false; this.refresh(cx); }
       cx.notify();
     });
   }
@@ -185,16 +187,25 @@ export default class Mods extends View {
   setSetting(k, v, cx) {
     this.settings = { ...this.settings, [k]: v }; // show it at once
     cx.notify();
-    cx.spawn(async (cx) => {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await this.readSettings();
-        const next = { ...this.settings, [k]: v };
+    // Writes run one after another, in the order chosen, so a slow earlier write can't land after a
+    // later choice. Each merges its own key into what the file holds right then; the panel keeps
+    // showing the choices in this.settings meanwhile.
+    const path = `${appHome()}/${SETTINGS}`;
+    const write = async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const text = await readTextFile(path).catch(() => null);
+        let current = {};
+        try { current = JSON.parse(text ?? "{}"); } catch { return; } // a broken file: don't clobber it
         try {
-          await writeTextFile(`${appHome()}/${SETTINGS}`, JSON.stringify(next, null, 2) + "\n", this.settingsText);
-          this.settings = next;
-          break;
+          await writeTextFile(path, JSON.stringify({ ...current, [k]: v }, null, 2) + "\n", text);
+          return;
         } catch { /* changed under us: read again */ }
       }
+    };
+    this.writes = (this.writes ?? Promise.resolve()).then(write).catch(() => {});
+    const queued = this.writes;
+    cx.spawn(async (cx) => {
+      await queued;
       cx.notify();
     });
   }
@@ -208,13 +219,16 @@ export default class Mods extends View {
       const next = JSON.parse(JSON.stringify(root));
       const slot = `${name}:${m.name}:${u.kind}`;
       if (!on) {
+        // Nothing is remembered unless the piece is really there to take out.
         if (u.kind === "floating") {
           const host = findId(next, u.parent) ?? next;
           const spec = (host.floating ?? []).find((f) => f.id === u.id);
+          if (!spec) return;
           host.floating = (host.floating ?? []).filter((f) => f.id !== u.id);
           this.parked[slot] = { parent: u.parent, spec, area: "floating" };
         } else {
           const host = findId(next, u.id);
+          if (!host?.content?.pane?.header) return;
           this.parked[slot] = { id: u.id, spec: host.content.pane.header, area: "panes" };
           delete host.content.pane.header;
         }
@@ -231,8 +245,10 @@ export default class Mods extends View {
     cx.notify();
   }
 
-  /** The release on offer: sidebar-chrome's finding, else this panel's own. */
+  /** The release on offer: this panel's own clicked check (the newest answer), else
+   *  sidebar-chrome's background finding, else this panel's own. */
   updateInfo() {
+    if (this.upd.own) return this.upd.info;
     const fromChrome = shared("islands.update");
     return fromChrome === undefined ? this.upd.info : fromChrome;
   }
@@ -248,6 +264,7 @@ export default class Mods extends View {
         this.upd.current = await installedVersion(SELF);
         this.upd.info = await availableRelease(this.upd.current, force);
         this.upd.detail = null;
+        if (force) this.upd.own = true;
       } catch (e) {
         this.upd.detail = `Couldn't reach GitHub: ${String(e?.message ?? e).slice(0, 80)}`;
       }

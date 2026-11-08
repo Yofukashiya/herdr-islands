@@ -176,7 +176,8 @@ export default class Agents extends View {
         .when(s.id === on, (el) => el.child(svg("mods/agent-list/check.svg").size(14).flex_none().text_color(t.foreground)))));
   }
 
-  peek(addr) {
+  // Not named `peek`: that's the hover card (`this.peek`, set in init), which would shadow it.
+  peekTerminal(addr) {
     run("terminal.peek", { terminal: addr });
   }
 
@@ -209,7 +210,7 @@ export default class Agents extends View {
       .text_size(12.5)
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
-      .on_click(() => this.peek(k.address))
+      .on_click(() => this.peekTerminal(k.address))
       .children(s.lines.map(l => div().self_start().mt(-4).w(9).h(17).mr(4).flex_none()
         .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
         .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
@@ -339,6 +340,7 @@ export default class Agents extends View {
           run("terminal.pin", { terminal: a.address, pinned: !isPinned });
           // The row moves away from under the pointer, and no hover-out comes.
           this.hovered = null;
+          this.peek.dismiss();
           cx.notify();
         })
         .child(svg(`mods/agent-list/${isPinned ? "pin-off" : "pin"}.svg`).size(13));
