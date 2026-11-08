@@ -136,7 +136,11 @@ const str = (v) => (v === null || v === undefined ? "" : typeof v === "boolean" 
 
 function values(ctx, x, out = []) {
   if (x instanceof Range) {
-    for (let r = x.r1; r <= x.r2; r++) for (let c = x.c1; c <= x.c2; c++) out.push(ctx.get(r, c, x.sheet));
+    // Cells past the sheet's data are empty, and no function here counts an empty cell: a
+    // whole-column range (A1:A1048576) stops at the data instead of walking a million rows.
+    const b = ctx.bounds?.(x.sheet);
+    const r2 = b ? Math.min(x.r2, b.maxRow) : x.r2, c2 = b ? Math.min(x.c2, b.maxCol) : x.c2;
+    for (let r = x.r1; r <= r2; r++) for (let c = x.c1; c <= c2; c++) out.push(ctx.get(r, c, x.sheet));
   } else out.push(x);
   return out;
 }

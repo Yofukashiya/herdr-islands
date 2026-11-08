@@ -263,10 +263,11 @@ export default class Mods extends View {
       try {
         this.upd.current = await installedVersion(SELF);
         this.upd.info = await availableRelease(this.upd.current, force);
-        this.upd.detail = null;
+        // A check's own field: `detail` keeps why an install failed, for the banner.
+        this.upd.checkError = null;
         if (force) this.upd.own = true;
       } catch (e) {
-        this.upd.detail = `Couldn't reach GitHub: ${String(e?.message ?? e).slice(0, 80)}`;
+        this.upd.checkError = `Couldn't reach GitHub: ${String(e?.message ?? e).slice(0, 80)}`;
       }
       // A clicked check spins for at least a moment, or a fast answer looks like nothing happened.
       if (force) await wait(Math.max(0, 700 - (Date.now() - started)));
@@ -359,7 +360,7 @@ export default class Mods extends View {
     // The space color when space-list shares one (Islands' accent), else the theme's.
     const accent = /^#[0-9a-f]{6}$/i.test(shared("islands.accent") ?? "") ? shared("islands.accent") : t.accent;
     const status = u.checking ? { text: "Checking GitHub…", color: t.muted }
-      : u.detail && !u.state ? { text: u.detail, color: t.blocked }
+      : u.checkError ? { text: u.checkError, color: t.blocked }
       : info ? { text: `${info.version} is out: update above`, color: accent }
       : u.checked ? { text: "Up to date", color: GREEN, icon: "check" }
       : { text: "Updates are checked once a day", color: t.dim };

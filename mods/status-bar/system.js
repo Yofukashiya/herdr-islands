@@ -130,7 +130,8 @@ export class WindowsLoad extends Sampler {
     };
   }
 
-  /** Total memory and core count never change: asked once. */
+  /** Total memory and core count never change: asked once it works (a cold PowerShell start can
+   *  fail), and given up on after 3 failed tries rather than run every sample. */
   async machineInfo() {
     if (this.machine) return this.machine;
     let memory = null, cores = null;
@@ -138,8 +139,10 @@ export class WindowsLoad extends Sampler {
       const r = await this.exec("powershell", ["-NoProfile", "-NonInteractive", "-Command", "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory; [Environment]::ProcessorCount"]);
       [memory, cores] = r.stdout.trim().split(/\s+/).map(Number);
     } catch {}
-    this.machine = { memory: memory > 0 ? memory : null, cores: cores > 0 ? cores : null };
-    return this.machine;
+    const info = { memory: memory > 0 ? memory : null, cores: cores > 0 ? cores : null };
+    this.tries = (this.tries ?? 0) + 1;
+    if (info.memory || this.tries >= 3) this.machine = info;
+    return info;
   }
 }
 
@@ -186,8 +189,11 @@ export class MacLoad extends Sampler {
       cores = Number(cpus) > 0 ? Number(cpus) : null;
       boot = Number(/sec\s*=\s*(\d+)/.exec(rest.join(" "))?.[1]) || null;
     } catch {}
-    this.machine = { memory, cores, boot };
-    return this.machine;
+    // Kept once it works; given up on after 3 failed tries (as on Windows).
+    const info = { memory, cores, boot };
+    this.tries = (this.tries ?? 0) + 1;
+    if (info.memory || this.tries >= 3) this.machine = info;
+    return info;
   }
 }
 

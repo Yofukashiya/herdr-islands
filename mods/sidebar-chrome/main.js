@@ -157,8 +157,10 @@ export default class WorkspaceChrome extends View {
       }
     }
     if (load("update.told", null) === info.version) return false;
-    save("update.told", info.version);
-    const manager = await fs.exists(`${appHome()}/mods/mod-manager/main.js`).catch(() => false);
+    // Whether the Mods panel is there to point at; any failure (even a synchronous throw) means no.
+    let manager = false;
+    try { manager = await fs.exists(`${appHome()}/mods/mod-manager/main.js`); } catch {}
+    save("update.told", info.version); // only once the notice below is sure to go out
     notify({
       title: `Herdr Islands ${info.version} is out`,
       body: manager ? `You have ${current}. Open Mods to update.` : `You have ${current}. Run the install command again to update.`,
