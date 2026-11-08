@@ -24,8 +24,7 @@ function location(shown) {
   const cwd = own || space?.folder;
   return { cwd: cwd ? normPath(cwd) : cwd, on, space: space?.id };
 }
-/** `shown`: the panel's location (this.where), for a pane with no folder of its own. */
-const key = (shown) => JSON.stringify(location(shown));
+const key =(shown) => JSON.stringify(location(shown));
 // Reads write nothing under .git (no index refresh or lock, no fsmonitor cookie):
 // the folder watch would see it, and every refresh would start the next one.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];

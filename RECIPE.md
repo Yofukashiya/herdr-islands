@@ -9,7 +9,7 @@ Excel-like viewer.
 ![Islands](preview.png)
 
 This file is the brief: enough to build Islands from an empty folder. The files next to it are one
-build of it (`layouts/islands.json`, ten mods in `mods/`, the backdrop in `backgrounds/`). If they don't
+build of it (`layouts/islands.json`, eleven mods in `mods/`, the backdrop in `backgrounds/`). If they don't
 work on your Herdr, or you want it different, build it again from here.
 
 ## What you see
@@ -125,9 +125,10 @@ formatting, tables, charts, pictures and comments, with sheet tabs at the bottom
     - `status` (32px).
   - **`main`'s panes:** `header: {content: {mod: "pane-header"}, reveal: "always", height: 30,
     position: "top"}`, `background: "background"`, border 1px, `radius: 14`, `gap: 12`, `lone: true`.
-  - **`panel`:** a `stack` `panel-body` of `files`, `changes` (Herdr's shipped mod) and `mods`.
+  - **`panel`:** a `stack` `panel-body` of `files`, `changes` and `mods` (`file-browser`, `git-changes`
+    and `mod-manager`). The tab bar's buttons open these blocks by id.
   - **Floating:** `{id: "radar", content: {mod: "agent-radar"}, edge: "right", align: "center", peek: 30}`.
-- **Ten mods**, each standalone (own icons; links between them are optional):
+- **Eleven mods**, each standalone (own icons; links between them are optional):
   - `sidebar-chrome`: brand card, and with `props: {footer: true}` the footer card.
     - The brand copy reads `mods/sidebar-chrome/settings.json` (`opacity`, `main_opacity`, `backdrop`,
       `radar`, `accent`, `auto_update`) through `watchFolder`, and shares them as `islands.*` keys.
@@ -219,5 +220,5 @@ formatting, tables, charts, pictures and comments, with sheet tabs at the bottom
   switches one off and back on, and changes theme, accent, opacity and backdrop live.
 - **Spreadsheets:** clicking an `.xlsx` in Files opens it in a tab with its colors, merges, formats and
   charts.
-- **Checks:** `herdr-app check` passes for all ten mods, and switching to another layout and back
+- **Checks:** `herdr-app check` passes for all eleven mods, and switching to another layout and back
   leaves that other layout untouched.

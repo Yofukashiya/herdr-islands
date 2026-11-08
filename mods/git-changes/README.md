@@ -33,4 +33,7 @@ Use it where your layout has Herdr's `changes`:
 { "id": "changes", "type": "block", "content": { "mod": "git-changes" } }
 ```
 
-Keep the block's id `changes`: the Changes button in the tab bar opens the block with that id.
+## Works with
+
+The Changes button in `tab-bar` (and in Herdr's own `tabs`) opens the block with the id `changes`, so
+keep that id.
