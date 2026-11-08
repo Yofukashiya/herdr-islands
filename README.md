@@ -7,7 +7,7 @@ floating over a grid that fades into a gradient. It also adds a status bar with 
 Mods menu, agent previews and a spreadsheet viewer. Built for Windows and macOS; tested live on
 Windows 11, while the macOS code paths (`iostat`, `vm_stat`, Keychain, `unzip`) haven't run on a real Mac yet.
 
-![Islands layout: spaces and agents on the left, split terminals, the Files panel and the status bar](docs/overview.png)
+![Islands layout: spaces and agents on the left, split terminals, the Files panel and the status bar](docs/overview.webp)
 
 ## Install
 
@@ -119,7 +119,7 @@ Ghostty's renderer or shaders), and mods have no access to it.
 
 The **Mods** button next to Files and Changes opens a panel with three tabs.
 
-![The Mods panel: mods grouped by where they sit in the window](docs/mods.png)
+![The Mods panel: mods grouped by where they sit in the window](docs/mods.webp)
 
 - **Mods.** Mods are grouped by where they sit in the window: Sidebar, Top bar, Panes, Side panel,
   Status bar, Floating. After those come:
@@ -163,7 +163,7 @@ name only shows after a restart.
 Click an `.xlsx`, `.xlsm`, `.csv` or `.tsv` file in the Files panel and it opens in a new tab, looking the
 way it does in Excel. It is read-only.
 
-![A workbook in the viewer: merged title, number formats, conditional formatting, a chart and a picture](docs/sheet.png)
+![A workbook in the viewer: merged title, number formats, conditional formatting, a chart and a picture](docs/sheet.webp)
 
 What it shows:
 - **Values:** values in Excel number formats (dates, percentages, currency and separators follow your
