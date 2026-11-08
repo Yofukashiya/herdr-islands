@@ -118,8 +118,9 @@ for m in $MODS; do
     # triggers then finds every new module already there. Interrupted: run it again.
     kept=""
     if [ -f "$to/settings.json" ]; then kept=$STAGE/settings-$m.json; cp "$to/settings.json" "$kept"; fi
-    # find, not a glob: it takes hidden files too and copes with an empty folder.
-    find "$SRC/mods/$m" -mindepth 1 -maxdepth 1 ! -name main.js -exec cp -R {} "$to/" \;
+    # find, not a glob: it takes hidden files too and copes with an empty folder. The `+` form makes
+    # find fail when a cp fails (with `\;` it would still exit 0), so set -e stops a half update.
+    find "$SRC/mods/$m" -mindepth 1 -maxdepth 1 ! -name main.js -exec sh -c 'cp -R "$@" "$0"' "$to/" {} +
     cp "$SRC/mods/$m/main.js" "$to/main.js"
     if [ -n "$kept" ]; then cp "$kept" "$to/settings.json"; fi
     # Files this release no longer has go too: a removed module would linger. The person's

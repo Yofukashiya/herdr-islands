@@ -50,8 +50,18 @@ def main(version):
         prev = found.group(1)
     today = datetime.date.today().isoformat()
 
+    # Every manifest is read and checked before any is written: a broken one stops the release
+    # with nothing half-done.
+    manifests = []
     for mod_json in sorted(glob.glob(os.path.join(ROOT, "mods", "*", "mod.json"))):
-        meta = json.loads(read(mod_json))
+        try:
+            meta = json.loads(read(mod_json))
+        except ValueError as e:
+            sys.exit(f"{os.path.relpath(mod_json, ROOT)} is not valid JSON: {e}")
+        if not isinstance(meta, dict):
+            sys.exit(f"{os.path.relpath(mod_json, ROOT)} is not a JSON object")
+        manifests.append((mod_json, meta))
+    for mod_json, meta in manifests:
         meta["version"] = version
         write(mod_json, json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
     print("mod.json version ->", version)

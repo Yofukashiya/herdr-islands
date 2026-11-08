@@ -6,6 +6,23 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-08
+
+Fixes from CodeRabbit's reviews of 1.1.2 and 1.1.3.
+
+### Fixed
+
+- **`sheet-viewer`:**
+  - conditional formats over large ranges collect their numbers while yielding to the host, and
+    sort them once per rule, only when a percentile or a rank needs it, numerically inside the
+    engine; before, each threshold copied and sorted every value with a JS comparator;
+  - a tiny nonzero number (`1e-10`) in General no longer shows as `0` when it doesn't fit.
+- **`status-bar`:** a service whose first read failed with nothing to show keeps its request
+  schedule across restarts, instead of being asked again at once.
+- **`install.sh`:** a failed copy while updating a mod stops the update; before, `find` hid the error,
+  and the update could report success with an old file left behind.
+- **`tools/release.py`:** checks every `mod.json` before writing any.
+
 ## [1.2.0] - 2026-11-08
 
 ### Added
@@ -203,7 +220,8 @@ First release.
 - **Status bar:** every reload of the mod asked all services again, so Claude answered "rate limited";
   the request schedule now survives reloads.
 
-[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.1...v1.1.2

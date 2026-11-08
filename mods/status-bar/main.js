@@ -94,7 +94,7 @@ export default class Usage extends View {
       this.service = new UsageService(await herdrIo(), { providers: config.providers, saved: load() });
       const publish = (cx) => {
         const snapshot = this.service.snapshot();
-        save(snapshot, this.service.state);
+        save(this.service);
         setShared(SHARED, snapshot);
         cx.notify();
       };
@@ -539,11 +539,16 @@ function load() {
   }
 }
 
-/** The readings, and when each service may be asked next, so a restart doesn't ask again at once. */
-function save(snapshot, state = {}) {
+/** The readings, and when each service may be asked next, so a restart doesn't ask again at once.
+ *  Every configured service keeps its schedule, also one whose first read failed with nothing to
+ *  show (the snapshot leaves those out), or its back-off would be lost on a restart. */
+function save(service) {
   try {
-    const entry = (r) => ({ report: r.report, updated: r.updated, due: state[r.id]?.due, rejected: state[r.id]?.rejected });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(snapshot.readings.map((r) => [r.id, entry(r)]))));
+    const entry = (id) => {
+      const r = service.readings[id], s = service.state[id];
+      return { report: r?.report ?? null, updated: r?.updated ?? null, due: s?.due, rejected: s?.rejected };
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(Object.keys(service.state).map((id) => [id, entry(id)]))));
   } catch {
     // Storage can be unavailable; the bar works without it.
   }

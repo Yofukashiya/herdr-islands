@@ -49,10 +49,12 @@ reviews:
     - path: "install.ps1"
       instructions: |
         Runs as `irm ... | iex` and as a file, in Windows PowerShell 5.1 and PowerShell 7.
-        It must stay ASCII-only (5.1 reads BOM-less files as ANSI), must not call `exit`
-        (that would close the person's shell under iex), and must pipe herdr-app.exe calls:
-        it is a GUI-subsystem program, so PowerShell only waits for it and sets $LASTEXITCODE
-        when its output goes into a pipeline.
+        It must stay ASCII-only (5.1 reads BOM-less files as ANSI). It must not reach `exit` on a
+        path that runs under `irm | iex` or `[scriptblock]::Create(...)`: that would close the
+        person's shell. The one `exit 1` at the end is guarded by `$PSCommandPath`, which is set
+        only when the script runs as a file; that is intended (a file run reports failure).
+        herdr-app.exe calls must be piped: it is a GUI-subsystem program, so PowerShell only
+        waits for it and sets $LASTEXITCODE when its output goes into a pipeline.
     - path: "install.sh"
       instructions: "POSIX sh, run as `curl ... | sh`. Must work with macOS (BSD) and GNU userlands; no bashisms."
 chat:
