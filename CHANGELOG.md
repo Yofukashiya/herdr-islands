@@ -6,8 +6,17 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`git-changes`:** the Changes panel, a clone of Herdr's `changes` with the fix below. The Islands
+  layout uses it instead of `changes`.
+- **Updating:** an update also installs a mod that the new Islands layout uses and that isn't
+  installed yet, so the layout's blocks never point at a missing mod.
+
 ### Fixed
 
+- **Changes:** opening a file no longer clears the panel (its list and the commit message you
+  were typing) and loads it again. The cause was the same as in Files below.
 - **Files:** opening a file no longer reloads the whole tree (an empty "Loading files…" panel,
   open folders closed). A file's tab has no folder of its own, so the panel switched to the
   space's folder, which Windows spells `D:/repo` while the terminal says `D:\repo`. Now a tab

@@ -16,7 +16,7 @@
 set -eu
 
 REPO=Yofukashiya/herdr-islands
-ALL="sidebar-chrome space-list agent-list tab-bar pane-header file-browser mod-manager status-bar agent-radar sheet-viewer"
+ALL="sidebar-chrome space-list agent-list tab-bar pane-header file-browser git-changes mod-manager status-bar agent-radar sheet-viewer"
 
 say() { printf '%s\n' "$*"; }
 
@@ -29,6 +29,7 @@ hint() {
     tab-bar) say "  $1: in your layout, use it where the tab bar has \"tabs\"." ;;
     pane-header) say "  $1: in your layout, set it as the pane header: \"pane\": {\"header\": {\"content\": {\"mod\": \"pane-header\"}}}." ;;
     file-browser) say "  $1: in your layout, use it where the side panel has \"files\"." ;;
+    git-changes) say "  $1: in your layout, use it where the side panel has \"changes\"." ;;
     mod-manager) say "  $1: open it with: herdr-app do mod.open --name mod-manager (its README shows a key for it)." ;;
     status-bar) say "  $1: Herdr docks it at the bottom of the layout you are looking at." ;;
     agent-radar) say "  $1: add it to your layout's root: \"floating\": [{\"id\": \"radar\", \"content\": {\"mod\": \"agent-radar\"}, \"edge\": \"right\", \"align\": \"center\", \"peek\": 30}]." ;;
@@ -109,6 +110,15 @@ else
   curl -fsSL "https://codeload.github.com/$REPO/tar.gz/$REF" | tar -xzf - -C "$STAGE"
   SRC=$(find "$STAGE" -mindepth 1 -maxdepth 1 -type d | head -n 1)
 fi
+# An update also installs a mod the new Islands layout uses that isn't here yet (one a release
+# added): the layout is replaced below, and its block would point at a missing mod.
+if [ "$MODE" = update ] && [ -f "$TARGET/layouts/islands.json" ]; then
+  placed=" $(grep -o '"mod"[[:space:]]*:[[:space:]]*"[A-Za-z0-9_-]*"' "$SRC/layouts/islands.json" | cut -d '"' -f 4 | tr '\n' ' ') "
+  for m in $ALL; do
+    case " $MODS " in *" $m "*) continue ;; esac
+    case $placed in *" $m "*) MODS="$MODS $m" ;; esac
+  done
+fi
 
 for m in $MODS; do
   to=$TARGET/mods/$m
@@ -133,9 +143,10 @@ for m in $MODS; do
     say "  updated    $m"
   else
     cp -R "$SRC/mods/$m" "$STAGE/new-$m"
-    if [ "$MODE" = full ]; then
-      # The Islands layout places every mod itself; "none" keeps Herdr from also docking a new mod
-      # into whatever layout is on screen right now (it does that once, the first time it sees a mod).
+    if [ "$MODE" != pick ]; then
+      # The Islands layout places every mod itself (a full install, or one an update adds for the
+      # layout); "none" keeps Herdr from also docking a new mod into whatever layout is on screen
+      # right now (it does that once, the first time it sees a mod).
       sed 's/"place"[[:space:]]*:[[:space:]]*"[a-z]*"/"place": "none"/' "$STAGE/new-$m/mod.json" > "$STAGE/mod.json"
       mv "$STAGE/mod.json" "$STAGE/new-$m/mod.json"
     fi

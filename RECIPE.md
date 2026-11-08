@@ -152,6 +152,10 @@ formatting, tables, charts, pictures and comments, with sheet tabs at the bottom
       `file://` and `vscode://file/…` and `cx.write_to_clipboard`.
 
     Spreadsheets go to `tab.new {mod: "sheet-viewer"}` when that mod is installed.
+  - `git-changes` (`changes`): a clone of `changes`. Like `file-browser`, it follows the focused pane's
+    folder, and a pane without one (a mod's tab) keeps the folder already shown. Herdr's own `files` and
+    `changes` fall back to the space's folder there, spelled `D:/repo` against the terminal's `D:\repo`,
+    and reset.
   - `mod-manager` (`mods`): the Mods panel; on its own it opens as a dialog with `mod.open`.
   - `status-bar` (`status`), from DanielFGray/herdr-config's `usage`:
     - **Limits:** reads CLI logins (`~/.claude/.credentials.json` or the macOS Keychain via `security`,
