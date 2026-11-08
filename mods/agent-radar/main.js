@@ -80,7 +80,7 @@ export default class Radar extends View {
   status(t, s) {
     const box = h_flex().w(18).h(18).flex_none().items_center().justify_center();
     if (s === "blocked") return box.child(div().id("st-b").size(10).rounded_full().bg(RED).loop("opacity", { from: 0.3, to: 1, period: 900 }));
-    if (s === "working") return box.child(svg("mods/workspace-chrome/spinner.svg").size(13).text_color(AMBER).spin(900));
+    if (s === "working") return box.child(svg("mods/agent-radar/spinner.svg").size(13).text_color(AMBER).spin(900));
     if (s === "done") return box.child(div().size(8).rounded_full().bg(GREEN));
     return box.child(div().size(8).rounded_full().border(1).border_color(t.dim));
   }

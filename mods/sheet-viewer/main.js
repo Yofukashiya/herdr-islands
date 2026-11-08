@@ -200,6 +200,7 @@ export default class Sheet extends View {
       const tick = slicer(this.pause);
       const stage = (name) => { this.stage = name; cx.notify(); };
       try {
+        if (!this.file) throw new Error("No file to show. Click a spreadsheet in the Files panel (file-browser mod), or run: herdr-app do tab.new --mod sheet-viewer --props '{\"file\":\"/full/path/book.xlsx\"}'");
         const e = ext(this.file);
         if (e === "xls") throw new Error("Old binary .xls workbooks can't be read: save it as .xlsx in Excel or LibreOffice.");
         stage("Reading the system locale");
@@ -655,7 +656,7 @@ export default class Sheet extends View {
     return shell(v_flex().size_full().min_h(0)
       // Title bar.
       .child(h_flex().h(34).flex_none().px(12).gap(10).items_center().border_b(1).border_color(t.border)
-        .child(svg("mods/files/file.svg").size(14).text_color(t.muted))
+        .child(svg("mods/sheet-viewer/file.svg").size(14).text_color(t.muted))
         .child(div().font_semibold().truncate().child(name))
         .child(div().text_size(11.5).text_color(t.dim).child(this.wb.csv ? `${this.wb.csv.encoding} · "${this.wb.csv.delimiter === "\t" ? "Tab" : this.wb.csv.delimiter}"` : `${sh.maxRow + 1} × ${sh.maxCol + 1}`))
         .child(div().flex_1())

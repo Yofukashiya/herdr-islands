@@ -53,6 +53,21 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 «Claude Code-credentials» из Связки ключей: Claude Code хранит вход там. Нажми **Всегда разрешать**.
 Если откажешь, Claude просто не появится в статус-баре.
 
+### Только некоторые моды
+
+Каждый мод работает и сам по себе, в твоей собственной раскладке. Назови нужные:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) status-bar sheet-viewer
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.sh | sh -s -- status-bar sheet-viewer
+```
+
+Так ставятся только эти моды, без раскладки и без её переключения, и скрипт пишет, куда поставить каждый.
+То же видно в таблице ниже, а подробности есть в README каждого мода.
+
 ### Обновление и удаление
 
 Чтобы обновить, запусти ту же команду ещё раз. Настройки Look (`mods/sidebar-chrome/settings.json`)
@@ -65,18 +80,21 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 
 ## Что внутри
 
-| Мод | Что делает |
-|---|---|
-| `sidebar-chrome` | Верхняя и нижняя карточки сайдбара; применяет настройки внешнего вида |
-| `space-list` | Пространства и их цвета |
-| `agent-list` | Агенты, подсмотр экрана агента при наведении |
-| `tab-bar` | Вкладки-пилюли, кнопки Files / Changes / Mods, кнопки окна |
-| `pane-header` | Шапка панели с линией фокуса |
-| `file-browser` | Панель Files; открывает таблицы в просмотрщике |
-| `mod-manager` | Панель Mods |
-| `status-bar` | Лимиты планов, CPU, память |
-| `agent-radar` | Выдвижная панель агентов у края окна |
-| `sheet-viewer` | Просмотрщик таблиц |
+| Мод | Что делает | Сам по себе |
+|---|---|---|
+| [`sidebar-chrome`](mods/sidebar-chrome/README.md) | Верхняя и нижняя карточки сайдбара; применяет настройки внешнего вида | вместо `workspace-chrome` |
+| [`space-list`](mods/space-list/README.md) | Пространства и их цвета | вместо `spaces` |
+| [`agent-list`](mods/agent-list/README.md) | Агенты, подсмотр экрана агента при наведении | вместо `agents` |
+| [`tab-bar`](mods/tab-bar/README.md) | Вкладки-пилюли, кнопки Files / Changes / Mods, кнопки окна | вместо `tabs` |
+| [`pane-header`](mods/pane-header/README.md) | Шапка панели с линией фокуса | шапка панели |
+| [`file-browser`](mods/file-browser/README.md) | Панель Files; открывает таблицы в просмотрщике | вместо `files` |
+| [`mod-manager`](mods/mod-manager/README.md) | Панель Mods | диалог: `mod.open` |
+| [`status-bar`](mods/status-bar/README.md) | Лимиты планов, CPU, память | сам встаёт вниз окна |
+| [`agent-radar`](mods/agent-radar/README.md) | Выдвижная панель агентов у края окна | плавающий блок |
+| [`sheet-viewer`](mods/sheet-viewer/README.md) | Просмотрщик таблиц | открывается из `file-browser` или из терминала |
+
+Ни один мод не требует другого: связи между ними — необязательные дополнения. Например, `space-list` даёт
+остальным цвет пространства, а без него они берут акцент темы.
 
 **Внешний вид.** Основа — [Islands](https://github.com/CodeyPacker/herdr-mods/tree/main/islands) от Cody Packer.
 Идея фона взята у [herdr-van](https://github.com/VanKurnia/herdr-van): сетка на почти чёрном фоне уходит в
@@ -223,6 +241,10 @@ herdr-app do tab.new --name report.xlsx --mod sheet-viewer --props '{"file":"/п
 opencode.ai, cursor.com. Эндпоинты недокументированные и однажды могут перестать работать. Больше никуда
 ничего не уходит. Для CPU и памяти запускает `typeperf` и один раз `powershell` на Windows, или `iostat`,
 `vm_stat` и `sysctl` на macOS.
+
+## Изменения
+
+См. [CHANGELOG.md](CHANGELOG.md) (на английском).
 
 ## Лицензия
 
