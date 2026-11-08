@@ -6,6 +6,23 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-08
+
+Fixes from CodeRabbit's review of 1.2.0. 1.2.1 was tagged but not published as a release; this
+release has its changes too.
+
+### Fixed
+
+- **Files, tabs:** two files with the same name (`a/index.js`, `b/index.js`) get tab names with
+  their folder (`index.js · b`), so a second click goes to the right tab.
+- **Files, viewer:**
+  - files that are never text (archives, media, PDFs, Office files) aren't read: their tab offers
+    the default app at once;
+  - a text file past 1 MiB is read only up to 16 MB, after asking the OS its size;
+  - one on another drive is copied into the cache first.
+- **Files, `.xls`:** opens with "Open with default app" instead of the spreadsheet viewer's
+  "can't read" error.
+
 ## [1.2.1] - 2026-11-08
 
 Fixes from CodeRabbit's reviews of 1.1.2 and 1.1.3.
@@ -220,7 +237,8 @@ First release.
 - **Status bar:** every reload of the mod asked all services again, so Claude answered "rate limited";
   the request schedule now survives reloads.
 
-[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.2...v1.1.3

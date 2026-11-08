@@ -3,8 +3,13 @@ import { spaces, run, exec, shared, setShared, appHome, home, window as hwin } f
 import * as fs from "fs/promises";
 
 export const MOD = "file-browser";
-export const SHEETS = /\.(xlsx|xlsm|xls|csv|tsv)$/i;
+// .xls (Excel 97-2003) isn't here: sheet-viewer can't read it, so it gets "Open with default app".
+export const SHEETS = /\.(xlsx|xlsm|csv|tsv)$/i;
 export const IMAGES = /\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i;
+/** Never text: shown with "Open with default app" at once, without reading the file. */
+export const BINARY = /\.(xls|zip|7z|rar|gz|tgz|xz|bz2|zst|tar|exe|msi|dll|so|dylib|bin|iso|dmg|pkg|pdf|docx?|pptx?|odt|ods|odp|mp[34]|m4a|mov|avi|mkv|webm|wav|flac|ogg|aac|woff2?|ttf|otf|class|jar|pyc|o|a|lib|obj|sqlite3?|db|psd|ai|heic|tiff?)$/i;
+/** Larger files aren't read for the viewer (a big log or dump would fill the mod's memory). */
+export const MAX_READ = 16 * 1024 * 1024;
 export const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 /** Files open in a tab: "machine|path" -> the tab's name, so a second click goes to that tab. */
 const OPEN = "file-browser.open";
@@ -27,11 +32,20 @@ export async function checkSheetViewer() {
  *  installed), everything else in this mod's viewer. A file already open goes to its tab.
  *  Synchronous when it can be, so it also works from a menu that closes right after. */
 export function openFile(file, on, cx) {
-  const name = baseName(file), k = openKey(file, on);
+  const k = openKey(file, on);
   const known = (shared(OPEN) ?? {})[k];
   const space = spaces().find((s) => s.active);
-  const tab = known && space?.tabs.find((t) => t.name === known);
+  const tabs = space?.tabs ?? [];
+  const tab = known && tabs.find((t) => t.name === known);
   if (tab) { run("tab.select", { id: tab.id }); return; }
+  // Herdr doesn't hand back the new tab's id, so the name has to be unique in the space for a second
+  // click to find the right tab: the file name, else with as many parent folders as it takes
+  // (a/index.js and b/index.js become "index.js · a" and "index.js · b"), like an editor's tabs.
+  const parts = String(file).replace(/\\/g, "/").split("/").filter(Boolean);
+  let name = parts[parts.length - 1] ?? String(file);
+  for (let i = parts.length - 2; i >= 0 && tabs.some((t) => t.name === name); i--) {
+    name = `${parts[parts.length - 1]} · ${parts.slice(i, -1).join("/")}`;
+  }
   const go = (sheet) => {
     setShared(OPEN, { ...(shared(OPEN) ?? {}), [k]: name });
     run("tab.new", { name, mod: sheet ? "sheet-viewer" : MOD, props: { file, on: on ?? null } });
@@ -117,6 +131,17 @@ export async function copyHere(src, dest) {
     ? await exec("powershell", ["-NoProfile", "-NonInteractive", "-Command", `Copy-Item -LiteralPath ${ps(src)} -Destination ${ps(dest)}`]).catch(() => null)
     : await exec("cp", [src, dest]).catch(() => null);
   return r?.code === 0;
+}
+
+/** A local file's size in bytes, or null (mods have no fs.stat; the OS tells). */
+export async function fileSize(p) {
+  const ps = (s) => `'${String(s).replace(/['‘’‚‛]/g, "$&$&")}'`;
+  const r = platform() === "windows"
+    // -ErrorAction Stop: a missing file must fail, not print 0 ($null.Length is 0 in PowerShell).
+    ? await exec("powershell", ["-NoProfile", "-NonInteractive", "-Command", `(Get-Item -LiteralPath ${ps(p)} -ErrorAction Stop).Length`]).catch(() => null)
+    : await exec("wc", ["-c", p]).catch(() => null);
+  const n = r?.code === 0 ? parseInt(String(r.stdout).trim(), 10) : NaN;
+  return Number.isFinite(n) ? n : null;
 }
 
 export function removeHere(abs) {
