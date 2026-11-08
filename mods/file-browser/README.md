@@ -15,6 +15,10 @@ Herdr's Files panel (the shipped `files` mod, cloned), made to open files rather
   - Open terminal here.
 
   For files on another machine, only the items that work there show.
+- **Git status** shows the way it does in an IDE. A changed file's name takes its color, with VS Code's
+  letter after it: `M` modified (amber), `A` added and `U` untracked (green), `D` deleted and `!` in
+  conflict (red). A folder with changes inside gets the same color and a dot, even when it's
+  collapsed. Ignored files and folders are dimmed.
 
 ## Install only this mod
 

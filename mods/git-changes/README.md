@@ -5,9 +5,12 @@
 Herdr's Changes panel (the shipped `changes` mod, cloned). It works the same way: the uncommitted files of
 the focused terminal's repo, a file's diff, and a box to commit everything.
 
-One thing is different. When a pane without a folder gets focus, such as a file opened from Files or any
-mod's tab, the panel stays where it is. The shipped one cleared itself there and loaded again, and a
-commit message you were typing was lost.
+Two things are different:
+- When a pane without a folder gets focus, such as a file opened from Files or any mod's tab, the panel
+  stays where it is. The shipped one cleared itself there and loaded again, and a commit message you
+  were typing was lost.
+- The status letters are VS Code's, the same as in Files: `U` is an untracked file (the shipped panel
+  says `A`), `!` a conflict (it says `U`), and `M` is amber.
 
 ## Install only this mod
 

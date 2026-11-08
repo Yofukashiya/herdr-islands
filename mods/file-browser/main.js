@@ -11,11 +11,13 @@ import { spaces, panes, focused, exec, watchFolder, theme, window, openOverlay, 
 import { openFile, findEditors, editors, terminalEditor, checkSheetViewer } from "./open.js";
 import { FileViewer } from "./viewer.js";
 import { FileMenu, menuItems, menuHeight } from "./menu.js";
+import { Marks, normPath, readStatus } from "./git.js";
 
-// One spelling per path, so git's "C:/repo/a.js" and a Windows pane's "c:\repo" find the same mark.
-// Only a Windows path ("C:\", "\\server") is respelled: on macOS and Linux "\" is part of a name.
-// By the path's shape, not the window's platform: a folder on another machine is that machine's.
-const normPath = (s) => /^([A-Za-z]:|\\\\)/.test(s) ? s.replace(/\\/g, "/").replace(/^([a-z]):/, (_m, d) => d.toUpperCase() + ":") : s;
+/** A git mark's color, as IDEs have them: modified amber, new green, deleted or in conflict red,
+ *  ignored dimmed. Amber is the terminal's yellow: `blocked` is red in some themes (atom-one-dark).
+ *  @param {import("./git.js").Row["tone"]} tone
+ *  @param {Record<string, string>} t the theme */
+const toneColor = (tone, t) => tone === "M" ? t.ansi3 : tone === "A" || tone === "U" ? t.ansi2 : tone === "D" || tone === "!" ? t.ansi1 : tone === "I" ? t.dim : null;
 
 /** The folder the tree shows: the focused terminal's. A pane with no folder of its own (a file
  *  opened from the tree, any mod's tab) keeps `shown`, the folder already in the tree for this
@@ -66,7 +68,7 @@ export default class Files extends View {
     if (p.file) { this.viewer = new FileViewer(p, cx); return; }
     if (p.menu) { this.menu = new FileMenu(p); return; }
     this.saved = new Map();
-    this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
+    this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = new Marks();
     this.term = null;
     this.extras(cx);
     this.refresh(cx);
@@ -114,7 +116,7 @@ export default class Files extends View {
       if (this.context) this.saved.set(this.context.key, { folders: this.folders });
       const saved = this.saved.get(next);
       this.context = { key: next, ...where }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.watched = null; this.error = null; this.limited = false;
+      this.pending = new Set(); this.marks = new Marks(); this.watched = null; this.error = null; this.limited = false;
       this.loading = false;
     }
     if (!cwd || this.loading) return;
@@ -129,14 +131,16 @@ export default class Files extends View {
           await this.loadFolder(path, context);
         }
         const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }).catch(() => null);
-        const marks = {};
+        let marks = new Marks();
         if (top?.code === 0) {
           // Writes nothing under .git (index lock, fsmonitor cookie): the folder watch would refresh again.
-          const status = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"], { cwd, on }).catch(() => null);
-          if (status?.code === 0) for (const entry of status.stdout.split("\0").filter(Boolean).slice(0, TOTAL)) {
-            const xy = entry.slice(0, 2);
-            marks[normPath(`${top.stdout.trim()}/${entry.slice(3)}`)] = xy === "??" || xy.includes("A") ? "A" : xy.includes("U") ? "U" : xy.includes("D") ? "D" : "M";
-          }
+          const status = (/** @type {string[]} */ more) => exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", ...more], { cwd, on }).catch(() => null);
+          // "matching" lists an ignored folder once (node_modules/), not each file in it, so it costs
+          // next to nothing. Git before 2.16 doesn't know it: then the marks come without ignored files.
+          let result = await status(["--ignored=matching"]);
+          if (result && result.code !== 0) result = await status([]);
+          const pause = () => new Promise((resolve) => cx.timer.after(1, () => resolve()));
+          if (result?.code === 0) marks = await readStatus(result.stdout, top.stdout.trim(), { limit: TOTAL, pause });
         }
         if (!this.current(context)) return;
         this.marks = marks; this.error = null; this.watch(cwd, cx);
@@ -181,14 +185,19 @@ export default class Files extends View {
     if (out.length >= TOTAL || depth > 40) return out;
     for (const entry of this.entries.get(prefix) ?? []) {
       if (out.length >= TOTAL) break;
-      const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[normPath(`${this.root}/${path}`)];
+      const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path);
+      const { letter, tone, dot } = this.marks.row(`${this.root}/${path}`), color = toneColor(tone, t);
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : openFile(this.abs(path), this.on ?? null, cx))
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.contextMenu(path, entry.dir); })
         .child(entry.dir ? svg(`mods/file-browser/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/file-browser/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
-        .child(div().flex_1().min_w(0).truncate().child(entry.name))
-        .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
+        // The letter (a file's) or the dot (a folder's, for changes inside) follows the name, so the
+        // radar's strip on the window's edge doesn't cover it.
+        .child(h_flex().flex_1().min_w(0).gap(6).items_center()
+          .child(div().min_w(0).truncate().when(Boolean(color), el => el.text_color(color)).child(entry.name))
+          .when(Boolean(letter), el => el.child(div().flex_none().text_size(11).font_semibold().text_color(color).child(letter)))
+          .when(dot, el => el.child(div().size(6).flex_none().rounded_full().bg(color)))));
       if (entry.dir && open) this.rows(path, depth + 1, out, t);
     }
     return out;

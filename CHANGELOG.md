@@ -12,6 +12,19 @@ All notable changes to this project are listed here. The format follows
   layout uses it instead of `changes`.
 - **Updating:** an update also installs a mod that the new Islands layout uses and that isn't
   installed yet, so the layout's blocks never point at a missing mod.
+- **Files, git status:** it shows the way it does in an IDE
+  ([#8](https://github.com/Yofukashiya/herdr-islands/issues/8)):
+  - a changed file's name takes its status color;
+  - a folder with changes inside gets the color and a dot, even when it's collapsed;
+  - ignored files and folders are dimmed. Git lists an ignored folder once, so `node_modules` costs
+    nothing.
+- **Tests:** `node --test` runs the tests in `tests/`. The first ones cover Files' git marks.
+
+### Changed
+
+- **Files and Changes, status letters:** they're VS Code's now. `U` is an untracked file (it was `A`),
+  `!` a conflict (it was `U`), and modified is amber: the old orange is red in some themes, the same
+  as deleted. In Files the letter follows the name, so the radar on the window's edge doesn't cover it.
 
 ### Fixed
 
