@@ -14,9 +14,7 @@ import { FileMenu, menuItems, menuHeight } from "./menu.js";
 import { Marks, normPath, readStatus } from "./git.js";
 
 /** A git mark's color, as IDEs have them: modified amber, new green, deleted or in conflict red,
- *  ignored dimmed. Amber is the terminal's yellow: `blocked` is red in some themes (atom-one-dark).
- *  @param {import("./git.js").Row["tone"]} tone
- *  @param {Record<string, string>} t the theme */
+ *  ignored dimmed. Amber is the terminal's yellow: `blocked` is red in some themes (atom-one-dark). */
 const toneColor = (tone, t) => tone === "M" ? t.ansi3 : tone === "A" || tone === "U" ? t.ansi2 : tone === "D" || tone === "!" ? t.ansi1 : tone === "I" ? t.dim : null;
 
 /** The folder the tree shows: the focused terminal's. A pane with no folder of its own (a file
@@ -134,9 +132,10 @@ export default class Files extends View {
         let marks = new Marks();
         if (top?.code === 0) {
           // Writes nothing under .git (index lock, fsmonitor cookie): the folder watch would refresh again.
-          const status = (/** @type {string[]} */ more) => exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", ...more], { cwd, on }).catch(() => null);
-          // "matching" lists an ignored folder once (node_modules/), not each file in it, so it costs
-          // next to nothing. Git before 2.16 doesn't know it: then the marks come without ignored files.
+          const status = (flags) => exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", ...flags], { cwd, on }).catch(() => null);
+          // "matching" lists an ignored folder once (node_modules/), not each file in it; only files
+          // a file pattern ignores (*.log) come one by one. Git before 2.16 doesn't know it: then
+          // the marks come without ignored files.
           let result = await status(["--ignored=matching"]);
           if (result && result.code !== 0) result = await status([]);
           const pause = () => new Promise((resolve) => cx.timer.after(1, () => resolve()));
@@ -183,18 +182,20 @@ export default class Files extends View {
 
   rows(prefix, depth, out, t) {
     if (out.length >= TOTAL || depth > 40) return out;
+    // A drive's root ("C:\") has its separator already.
+    const root = String(this.root).replace(/[\\/]$/, "");
     for (const entry of this.entries.get(prefix) ?? []) {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path);
-      const { letter, tone, dot } = this.marks.row(`${this.root}/${path}`), color = toneColor(tone, t);
+      const { letter, tone, dot } = this.marks.row(`${root}/${path}`), color = toneColor(tone, t);
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : openFile(this.abs(path), this.on ?? null, cx))
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.contextMenu(path, entry.dir); })
         .child(entry.dir ? svg(`mods/file-browser/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/file-browser/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         // The letter (a file's) or the dot (a folder's, for changes inside) follows the name, so the
-        // radar's strip on the window's edge doesn't cover it.
-        .child(h_flex().flex_1().min_w(0).gap(6).items_center()
+        // radar's 30px strip on the window's edge doesn't cover it. A long name stops short of it.
+        .child(h_flex().flex_1().min_w(0).gap(6).items_center().when(Boolean(letter) || dot, el => el.pr(22))
           .child(div().min_w(0).truncate().when(Boolean(color), el => el.text_color(color)).child(entry.name))
           .when(Boolean(letter), el => el.child(div().flex_none().text_size(11).font_semibold().text_color(color).child(letter)))
           .when(dot, el => el.child(div().size(6).flex_none().rounded_full().bg(color)))));
