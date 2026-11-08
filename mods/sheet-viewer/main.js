@@ -37,21 +37,27 @@ function textWidth(text, size, bold) {
 
 /**
  * A General-format number shrunk to its column, as Excel does instead of "####": fewer decimals
- * (rounded), then E notation. null when nothing fits. `sep` is the locale's decimal separator.
+ * (rounded), or E notation when that shows more of the number (0.000012345 -> 1.2E-05). null when
+ * nothing fits. `sep` is the locale's decimal separator.
  */
 function fitGeneral(v, fits, sep) {
   if (!Number.isFinite(v)) return null;
+  let fixed = null, sci = null;
   for (let d = 9; d >= 0; d--) {
     const s = String(Number(v.toFixed(d)));
     if (s.includes("e")) break;
     const t = s.replace(".", sep);
-    if (fits(t)) return t;
+    if (fits(t)) { fixed = t; break; }
   }
   for (let d = 5; d >= 0; d--) {
-    const t = v.toExponential(d).replace(".", sep).replace(/e([+-])(\d)$/, "e$10$2").toUpperCase();
-    if (fits(t)) return t;
+    // No trailing zeros in the mantissa, as Excel writes it: 4.2E+01, not 4.20E+01.
+    const t = v.toExponential(d).replace(/\.?0+e/, "e").replace(".", sep).replace(/e([+-])(\d)$/, "e$10$2").toUpperCase();
+    if (fits(t)) { sci = t; break; }
   }
-  return null;
+  // Significant digits shown: the mantissa's digits without leading zeros.
+  const sig = (t) => t.replace(/E.*$/, "").replace(/\D/g, "").replace(/^0+/, "").length;
+  if (fixed !== null && (sci === null || sig(fixed) >= sig(sci))) return fixed;
+  return sci ?? fixed;
 }
 
 // ---- reading the file ------------------------------------------------------------
@@ -146,10 +152,14 @@ async function prepare(file, on, id, tick) {
     return { kind: "xlsx", src: zipSource(bytes), cleanup: [copy, local !== file ? local : null] };
   }
   // CSV / TSV / TXT.
+  // Read once; only a file the mod can't reach where it is gets copied into the cache first.
   let path = local, copied = null;
-  try { await fs.readFile(path, "utf8"); } catch { copied = `${cache}/c-${id}.${e}`; await copyLocal(local, copied); path = copied; }
   let text = null, encoding = "UTF-8";
-  try { text = await fs.readFile(path, "utf8"); } catch {}
+  try { text = await fs.readFile(path, "utf8"); }
+  catch {
+    copied = `${cache}/c-${id}.${e}`; await copyLocal(local, copied); path = copied;
+    try { text = await fs.readFile(path, "utf8"); } catch {}
+  }
   if (text !== null && text.charCodeAt(0) === 0xfeff) encoding = "UTF-8 BOM";
   if (text === null || text.includes("\ufffd")) {
     const bytes = await fs.readFile(path);
@@ -226,6 +236,8 @@ export default class Sheet extends View {
         if (e === "xls") throw new Error("Old binary .xls workbooks can't be read: save it as .xlsx in Excel or LibreOffice.");
         stage("Reading the system locale");
         this.locale = await systemLocale();
+        // The locale's decimal separator, as General writes it ("0,5" in Russian).
+        this.decSep = (formatValue(0.5, "General", { locale: this.locale })?.text ?? "0.5").replace(/[0-9-]/g, "").charAt(0) || ".";
         stage("Reading the file");
         const prep = await prepare(this.file, this.on, this.id, tick);
         this.cleanup = prep.cleanup.filter(Boolean);
@@ -490,7 +502,7 @@ export default class Sheet extends View {
           // General never shows "####" in Excel: it rounds to the column, then goes to E notation.
           const room = w - 4 * z - (st.cf?.icon ? size * 1.3 : 0);
           if (textWidth(text, size, f.bold) > room) {
-            text = fitGeneral(shown.general, (s) => textWidth(s, size, f.bold) <= room, text.includes(",") ? "," : ".") ?? text;
+            text = fitGeneral(shown.general, (s) => textWidth(s, size, f.bold) <= room, this.decSep ?? ".") ?? text;
           }
         }
         if (!wrap && !st.cf?.icon) {

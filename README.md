@@ -94,7 +94,8 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 ### Update and uninstall
 
 To update, run the same command again. Your Look settings (`mods/sidebar-chrome/settings.json`) are
-kept. The `islands` layout file itself is replaced.
+kept. The `islands` layout file itself is replaced, so blocks you switched off in Mods come back
+([#4](https://github.com/Yofukashiya/herdr-islands/issues/4)).
 
 To uninstall, switch to another layout (Ctrl+Shift+L), then delete `layouts/islands.json`,
 `layouts/islands.svg`, `backgrounds/islands-grid.png` and these folders in `~/.config/herdr-app/mods`:
@@ -229,13 +230,15 @@ herdr-app do tab.new --name report.xlsx --mod sheet-viewer --props '{"file":"/fu
 Limits:
 - **.xls** (Excel 97–2003) isn't read; save it as .xlsx.
 - **Formulas** aren't recalculated: you see the result saved in the file. When there is none, simple
-  formulas are computed and the rest show as formula text.
+  formulas are computed and the rest show as formula text. Whole-column and whole-row references
+  (`A:A`, `1:1`) aren't computed yet ([#2](https://github.com/Yofukashiya/herdr-islands/issues/2)).
 - **Angled text** is drawn horizontally; vertical stacked text works.
 - **Built-in table styles** are close approximations.
 - **Charts** have no trendlines, error bars or true 3D.
 - **Not drawn:** sparklines, slicers, form controls and SmartArt.
 - **Very large sheets** (hundreds of thousands of cells) open slowly and can run into the mod
-  runtime's memory limit; the viewer then says "out of memory" instead of showing the sheet.
+  runtime's memory limit; the viewer then says "out of memory" instead of showing the sheet
+  ([#3](https://github.com/Yofukashiya/herdr-islands/issues/3)).
 
 How it reads files. Herdr runs mod scripts in an interpreter about 50× slower than Node and silently
 stops a script that runs ~0.5 s without yielding. So the system unzips the workbook (.NET via

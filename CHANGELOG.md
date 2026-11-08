@@ -6,6 +6,27 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-08
+
+The rest of CodeRabbit's review of 1.1.1 (the nitpicks), and known limits filed as issues
+([#2](https://github.com/Yofukashiya/herdr-islands/issues/2) to
+[#6](https://github.com/Yofukashiya/herdr-islands/issues/6)) and linked from the README.
+
+### Fixed
+
+- **`sheet-viewer`:**
+  - very small General numbers switch to E notation when it shows more of them, as Excel does
+    (`-1.2E-05` rather than `-0.00001`);
+  - E notation uses the locale's decimal separator and drops trailing zeros (`4.2E+01`);
+  - a CSV file is read from disk once instead of twice.
+- **Updating a mod in place:**
+  - also removes files the new release no longer has (the person's settings, Herdr's generated
+    files and hidden ones stay);
+  - copies hidden files too.
+- **`install.ps1`:** run as a file, a failure (unknown mod, bad `--ref`, a mod failing its check)
+  ends with exit code 1. Pasted into a shell, it still leaves the shell open.
+- **`tools/release.py`:** closes the files it writes.
+
 ## [1.1.2] - 2026-11-08
 
 Fixes from CodeRabbit's review of 1.1.1.
@@ -161,7 +182,8 @@ First release.
 - **Status bar:** every reload of the mod asked all services again, so Claude answered "rate limited";
   the request schedule now survives reloads.
 
-[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Yofukashiya/herdr-islands/compare/v1.0.0...v1.1.0

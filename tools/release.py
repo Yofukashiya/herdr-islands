@@ -17,13 +17,23 @@ REPO = "Yofukashiya/herdr-islands"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def write(path, text):
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
 def main(version):
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         sys.exit("Version must look like 1.2.0")
 
     # Check the changelog first: nothing is written unless both parts can be.
     path = os.path.join(ROOT, "CHANGELOG.md")
-    text = open(path, encoding="utf-8").read()
+    text = read(path)
     if f"## [{version}]" in text:
         sys.exit(f"CHANGELOG.md already has {version}")
     head, sep, rest = text.partition("## [Unreleased]\n")
@@ -41,15 +51,15 @@ def main(version):
     today = datetime.date.today().isoformat()
 
     for mod_json in sorted(glob.glob(os.path.join(ROOT, "mods", "*", "mod.json"))):
-        meta = json.load(open(mod_json, encoding="utf-8"))
+        meta = json.loads(read(mod_json))
         meta["version"] = version
-        open(mod_json, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
+        write(mod_json, json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
     print("mod.json version ->", version)
     text = f"{head}## [Unreleased]\n\n## [{version}] - {today}\n{body.rstrip()}\n" + (f"\n## [{tail}" if nxt else "")
     text = re.sub(r"^\[Unreleased\]: .*$", f"[Unreleased]: https://github.com/{REPO}/compare/v{version}...HEAD", text, flags=re.M)
     link = f"[{version}]: https://github.com/{REPO}/" + (f"compare/v{prev}...v{version}" if prev else f"releases/tag/v{version}")
     text = re.sub(r"^(\[Unreleased\]: .*)$", lambda m: m.group(1) + "\n" + link, text, count=1, flags=re.M)
-    open(path, "w", encoding="utf-8", newline="\n").write(text)
+    write(path, text)
     print(f"CHANGELOG.md: [Unreleased] -> [{version}] - {today}")
 
     print(f"""

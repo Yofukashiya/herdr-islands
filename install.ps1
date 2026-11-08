@@ -52,6 +52,10 @@
   function Fail($text) {
     Say $text Red
     if ($update) { Say "islands-update: failed $text"; throw $text }
+    # Pasted into a shell (irm | iex) it must stay open, so no `exit` here: the flag below makes a
+    # run as a file end with exit code 1, and $LASTEXITCODE tells a script that pasted it.
+    $global:HerdrIslandsFailed = $true
+    $global:LASTEXITCODE = 1
   }
 
   if ($ref -notmatch '^[A-Za-z0-9._/-]+$') { Fail "Bad --ref: $ref"; return }
@@ -106,6 +110,12 @@
         Copy-Item -Recurse -Force (Join-Path $from '*') $to -Exclude 'main.js'
         Copy-Item -Force (Join-Path $from 'main.js') $to
         if ($kept) { [IO.File]::WriteAllBytes($settings, $kept) }
+        # Files this release no longer has go too: a removed module would linger. The person's
+        # settings, the files Herdr generates and hidden ones (cache, update log) stay.
+        $own = 'settings.json', 'gpui-kit.d.ts', 'jsconfig.json'
+        Get-ChildItem -LiteralPath $to -Force |
+          Where-Object { -not $_.Name.StartsWith('.') -and $own -notcontains $_.Name -and -not (Test-Path -LiteralPath (Join-Path $from $_.Name)) } |
+          Remove-Item -Recurse -Force
         Say "  updated    $m"
       } else {
         $tmp = Join-Path $stage "new-$m"
@@ -196,3 +206,10 @@
     Say "`nDone. In Herdr press Ctrl+Shift+L until Islands shows." Green
   }
 } @args
+
+# A failure (bad arguments, a mod that fails its check) ends a run as a file with exit code 1.
+# Pasted into a shell there's no $PSCommandPath, and no exit: it would close that shell.
+if ($global:HerdrIslandsFailed) {
+  Remove-Variable -Scope Global -Name HerdrIslandsFailed
+  if ($PSCommandPath) { exit 1 }
+}
