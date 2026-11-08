@@ -114,7 +114,7 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 | [`agent-list`](mods/agent-list/README.md) | Агенты, подсмотр экрана агента при наведении | вместо `agents` |
 | [`tab-bar`](mods/tab-bar/README.md) | Вкладки-пилюли, кнопки Files / Changes / Mods, кнопки окна | вместо `tabs` |
 | [`pane-header`](mods/pane-header/README.md) | Шапка панели с линией фокуса | шапка панели |
-| [`file-browser`](mods/file-browser/README.md) | Панель Files; открывает таблицы в просмотрщике | вместо `files` |
+| [`file-browser`](mods/file-browser/README.md) | Панель Files: открывает файлы во вкладках, меню по правому клику | вместо `files` |
 | [`mod-manager`](mods/mod-manager/README.md) | Панель Mods | диалог: `mod.open` |
 | [`status-bar`](mods/status-bar/README.md) | Лимиты планов, CPU, память | сам встаёт вниз окна |
 | [`agent-radar`](mods/agent-radar/README.md) | Выдвижная панель агентов у края окна | плавающий блок |
@@ -208,6 +208,24 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 2. Запусти `python3 make_islands_grid.py my-grid.png`. Сохраняй под **новым** именем: Herdr кэширует
    картинку по пути, и файл, подменённый под старым именем, покажется только после перезапуска.
 3. Укажи новое имя в `backdrop`.
+
+## Панель Files
+
+- **Левый клик** по файлу открывает его здесь, в Herdr, в отдельной вкладке:
+  - код и текст — только для чтения, с подсветкой и номерами строк;
+  - картинки — вписанными во вкладку;
+  - таблицы — в просмотрщике таблиц.
+
+  Если файл уже открыт, клик переключает на его вкладку.
+- **Правый клик** по файлу, папке или пустому месту дерева — меню для всего остального:
+  - **Open with default app** — программой по умолчанию;
+  - **Open in VS Code / Cursor** — если установлены;
+  - **Show in Explorer / Finder**;
+  - **Copy path** / **Copy relative path**;
+  - **Open terminal here** — терминал в этой папке.
+
+Чтобы открывать файлы из этого меню в терминальном редакторе, впиши
+`{ "terminal_editor": ["nvim"] }` в `mods/file-browser/settings.json`.
 
 ## Просмотр таблиц
 

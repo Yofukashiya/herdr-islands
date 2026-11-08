@@ -1,12 +1,17 @@
-// A lazy file browser for the focused pane's folder, with bounded read-only previews.
-// file-browser: the shipped Files panel, cloned. Changed: spreadsheets (.xlsx .xlsm .xls .csv .tsv)
-// open in the sheet-viewer mod, in a new tab, instead of as raw text, when that mod is installed.
+// A lazy file browser for the focused pane's folder.
+// file-browser: the shipped Files panel, cloned. Changed:
+// - a left click opens a file here in Herdr, in a tab of its own (viewer.js): code and text with
+//   syntax colors, pictures fitted, spreadsheets in the sheet-viewer mod when it's installed;
+// - a right click opens a menu (menu.js) for everything else: its program, a code editor, Explorer /
+//   Finder, the path, a terminal there.
+// One mod, three roles, by props: { file } a viewer tab, { menu } the menu popup, none the panel.
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, run, appHome } from "herdr";
-import * as fs from "fs/promises";
+import { v_flex, h_flex } from "gpui-base";
+import { spaces, panes, focused, exec, watchFolder, theme, window, openOverlay, props } from "herdr";
+import { openFile, findEditors, editors, terminalEditor, checkSheetViewer } from "./open.js";
+import { FileViewer } from "./viewer.js";
+import { FileMenu, menuItems, menuHeight } from "./menu.js";
 
-const SHEETS = /\.(xlsx|xlsm|xls|csv|tsv)$/i;
 // One spelling per path, so git's "C:/repo/a.js" and a Windows pane's "c:\repo" find the same mark.
 const normPath = (s) => s.replace(/\\/g, "/").replace(/^([a-z]):/, (_m, d) => d.toUpperCase() + ":");
 
@@ -17,7 +22,6 @@ function location() {
   return { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
 }
 const key = () => JSON.stringify(location());
-const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
 
 async function directory(path, on) {
@@ -47,10 +51,28 @@ async function directory(path, on) {
 
 export default class Files extends View {
   init(_props, cx) {
+    // A tab's or a popup's props come through props(), not init's argument.
+    const p = props() ?? {};
+    if (p.file) { this.viewer = new FileViewer(p, cx); return; }
+    if (p.menu) { this.menu = new FileMenu(p); return; }
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
+    this.term = null;
+    this.extras(cx);
     this.refresh(cx);
     cx.timer.every(10000, cx => this.refresh(cx));
+  }
+
+  close() { this.viewer?.close(); }
+
+  /** What the menu offers besides the basics: editors found, a terminal editor from settings.json,
+   *  and whether spreadsheets have their viewer. Asked again with each refresh, cheaply. */
+  extras(cx) {
+    cx.spawn(async () => {
+      await findEditors().catch(() => {});
+      this.term = await terminalEditor();
+      await checkSheetViewer();
+    });
   }
 
   watch(root, cx) {
@@ -79,14 +101,14 @@ export default class Files extends View {
   refresh(cx) {
     const { cwd, on } = location(), next = key();
     if (next !== this.context?.key) {
-      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file });
+      if (this.context) this.saved.set(this.context.key, { folders: this.folders });
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.show(null); this.watched = null; this.error = null; this.limited = false;
+      this.pending = new Set(); this.marks = {}; this.watched = null; this.error = null; this.limited = false;
       this.loading = false;
-      if (saved?.file) this.show(saved.file, cx);
     }
     if (!cwd || this.loading) return;
+    this.extras(cx);
     const context = this.context;
     this.loading = true;
     this.limited = false;
@@ -134,39 +156,15 @@ export default class Files extends View {
     cx.notify();
   }
 
-  show(path, cx) {
-    // Spreadsheets open in the sheet-viewer mod, in a tab of their own, when it's installed (checked on
-    // each click, so installing it later works at once); the tree stays. Without it: text, as shipped.
-    if (path && cx && SHEETS.test(path)) {
-      const file = `${this.root}/${path}`, on = this.on ?? null;
-      cx.spawn(async cx => {
-        const viewer = await fs.exists(`${appHome()}/mods/sheet-viewer/main.js`).catch(() => false);
-        if (viewer) run("tab.new", { name: path.split("/").pop(), mod: "sheet-viewer", props: { file, on } });
-        else { this.preview(path, cx); cx.notify(); }
-      });
-      return;
-    }
-    this.preview(path, cx);
-  }
+  /** The full path of `path` in the tree ("" is the folder itself). */
+  abs(path) { return normPath(path ? `${this.root}/${path}` : String(this.root)); }
 
-  preview(path, cx) {
-    this.code?.release(); this.code = null; this.file = path; this.fileError = null;
-    if (!path || !cx) return;
-    const context = this.context, root = this.root, on = this.on;
-    cx.spawn(async cx => {
-      try {
-        const text = await readTextFile(`${root}/${path}`, { on });
-        if (this.file !== path || !this.current(context)) return;
-        if (text === null) { this.fileError = "This file is no longer available"; return; }
-        if (text.includes("\0")) { this.fileError = "Binary file · no text preview"; return; }
-        const t = theme(), ext = path.includes(".") ? path.split(".").pop() : "txt";
-        this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: true,
-          value: text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text,
-          font_family: settings().font_family, font_size: 12,
-          syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
-      } catch { if (this.file === path && this.current(context)) this.fileError = "Cannot preview this file (binary, too large, or unreadable)"; }
-      finally { cx.notify(); }
-    });
+  /** The right-click menu for a file or folder of the tree, at the pointer. */
+  contextMenu(path, isDir) {
+    if (!this.root) return;
+    const target = { file: this.abs(path), rel: path, isDir, on: this.on ?? null };
+    const found = editors(), items = menuItems(target, found, this.term);
+    openOverlay({ mod: "file-browser", kind: "popup", width: 236, height: menuHeight(items) + 2, props: { menu: target, editors: found, term: this.term } });
   }
 
   rows(prefix, depth, out, t) {
@@ -175,7 +173,8 @@ export default class Files extends View {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[normPath(`${this.root}/${path}`)];
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
-        .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : this.show(path, cx))
+        .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : openFile(this.abs(path), this.on ?? null, cx))
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.contextMenu(path, entry.dir); })
         .child(entry.dir ? svg(`mods/file-browser/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/file-browser/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
@@ -186,16 +185,19 @@ export default class Files extends View {
   }
 
   render(cx) {
+    if (this.viewer) return this.viewer.render(cx);
+    if (this.menu) return this.menu.render(cx);
     if (key() !== this.context?.key) this.refresh(cx);
     const t = theme();
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .when(Boolean(this.file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? "")))
-      .when(!this.file, el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? "")))
+      // A right click on the empty part of the tree is about the folder itself.
+      .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.contextMenu("", true); })
+        .children(this.rows("", 0, [], t))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
-        .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
-      .when(Boolean(this.file), el => el.child(this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")));
+        .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total"))));
   }
 }
