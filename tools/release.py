@@ -21,12 +21,7 @@ def main(version):
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         sys.exit("Version must look like 1.2.0")
 
-    for path in sorted(glob.glob(os.path.join(ROOT, "mods", "*", "mod.json"))):
-        meta = json.load(open(path, encoding="utf-8"))
-        meta["version"] = version
-        open(path, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
-    print("mod.json version ->", version)
-
+    # Check the changelog first: nothing is written unless both parts can be.
     path = os.path.join(ROOT, "CHANGELOG.md")
     text = open(path, encoding="utf-8").read()
     if f"## [{version}]" in text:
@@ -37,8 +32,19 @@ def main(version):
     body, nxt, tail = rest.partition("\n## [")
     if not body.strip():
         sys.exit("Nothing under [Unreleased]: write the changes first")
+    prev = None
+    if nxt:
+        found = re.match(r"([^\]]+)\]", tail)
+        if not found:
+            sys.exit("CHANGELOG.md: the section after [Unreleased] has no closing ] in its heading")
+        prev = found.group(1)
     today = datetime.date.today().isoformat()
-    prev = re.match(r"([^\]]+)\]", tail).group(1) if nxt else None
+
+    for mod_json in sorted(glob.glob(os.path.join(ROOT, "mods", "*", "mod.json"))):
+        meta = json.load(open(mod_json, encoding="utf-8"))
+        meta["version"] = version
+        open(mod_json, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
+    print("mod.json version ->", version)
     text = f"{head}## [Unreleased]\n\n## [{version}] - {today}\n{body.rstrip()}\n" + (f"\n## [{tail}" if nxt else "")
     text = re.sub(r"^\[Unreleased\]: .*$", f"[Unreleased]: https://github.com/{REPO}/compare/v{version}...HEAD", text, flags=re.M)
     link = f"[{version}]: https://github.com/{REPO}/" + (f"compare/v{prev}...v{version}" if prev else f"releases/tag/v{version}")

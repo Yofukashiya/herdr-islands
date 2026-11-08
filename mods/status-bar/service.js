@@ -19,7 +19,9 @@ export class UsageService {
   /** @param providers ids to read; @param saved readings from the last run */
   constructor(io, { providers = PROVIDERS.map((p) => p.id), saved = {} } = {}) {
     this.io = io;
-    this.providers = PROVIDERS.filter((p) => providers.includes(p.id));
+    // usage.json is hand-written: anything but a list ("claude", null) means all of them.
+    const wanted = Array.isArray(providers) ? providers : PROVIDERS.map((p) => p.id);
+    this.providers = PROVIDERS.filter((p) => wanted.includes(p.id));
     this.readings = {};
     this.state = {};
     const now = Date.now();

@@ -396,6 +396,9 @@ async function scanSheetData(data, sheet, wb, tick) {
   }
 }
 
+/** Where a sheet's data ends, for formulas over whole columns; null when unknown. */
+const boundsOf = (sh) => (sh && Number.isFinite(sh.maxRow) && Number.isFinite(sh.maxCol) ? { maxRow: sh.maxRow, maxCol: sh.maxCol } : null);
+
 function valueGetter(sheet, wb) {
   const busy = new Set();
   const get = (r, c, sheetName) => {
@@ -407,7 +410,10 @@ function valueGetter(sheet, wb) {
       const k = sh.index + ":" + key(r, c);
       if (busy.has(k)) return { error: "#REF!" };
       busy.add(k);
-      const v = evaluate(cell.f, { get: (rr, cc, nm) => (nm ? get(rr, cc, nm) : (sh === sheet ? get(rr, cc) : getIn(sh, rr, cc))) }, cell.fBase ? { r, c, baseR: cell.fBase.r, baseC: cell.fBase.c } : null);
+      const v = evaluate(cell.f, {
+        get: (rr, cc, nm) => (nm ? get(rr, cc, nm) : (sh === sheet ? get(rr, cc) : getIn(sh, rr, cc))),
+        bounds: (nm) => boundsOf(nm ? wb.sheetByName(nm) : sh),
+      }, cell.fBase ? { r, c, baseR: cell.fBase.r, baseC: cell.fBase.c } : null);
       busy.delete(k);
       if (v !== undefined) { cell.v = v; cell.missing = false; }
       else cell.unknown = true;
@@ -456,7 +462,7 @@ function lerpColor(a, b, k) { return mix(a, b, Math.max(0, Math.min(1, k))); }
 
 async function applyConditionalFormats(sheet, doc, wb, tick) {
   const get = valueGetter(sheet, wb);
-  const ctx = { get };
+  const ctx = { get, bounds: (nm) => boundsOf(nm ? wb.sheetByName(nm) : sheet) };
   const blocks = kids(doc, "conditionalFormatting");
   const rules = [];
   for (const b of blocks) {

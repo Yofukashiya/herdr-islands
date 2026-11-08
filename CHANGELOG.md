@@ -6,6 +6,25 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-08
+
+Fixes from CodeRabbit's review of 1.1.1.
+
+### Fixed
+
+- **`sheet-viewer`:**
+  - formulas over whole columns (`=SUM(A1:A1048576)`) stop at the sheet's data instead of reading
+    a million cells, which stalled sheets saved without cached values;
+  - the workbook copy and the pictures it writes to the cache are removed when the tab closes, as
+    the README says.
+- **`mod-manager`:** a failed update check no longer hides why an update failed.
+- **`sidebar-chrome`:** an update notice isn't marked as shown before it goes out.
+- **`status-bar`:**
+  - a `providers` value in `usage.json` that isn't a list no longer breaks the bar;
+  - total memory and cores are asked again when the first try fails (up to 3 tries), instead of
+    leaving MEM off until a reload.
+- **`tools/release.py`:** checks the changelog before touching any `mod.json`.
+
 ## [1.1.1] - 2026-11-08
 
 Fixes from CodeRabbit's reviews of the whole code. 1.1.0 was tagged but never published as a release; this
@@ -142,7 +161,8 @@ First release.
 - **Status bar:** every reload of the mod asked all services again, so Claude answered "rate limited";
   the request schedule now survives reloads.
 
-[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Yofukashiya/herdr-islands/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Yofukashiya/herdr-islands/releases/tag/v1.0.0

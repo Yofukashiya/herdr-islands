@@ -141,9 +141,9 @@ async function prepare(file, on, id, tick) {
     const dir = `${cache}/x-${id}`;
     if (await unzipNative(local, dir)) return { kind: "xlsx", src: dirSource(dir, `${CACHE}/x-${id}`), cleanup: [dir, local !== file ? local : null] };
     // No unzip tool: decompress in JS, one part at a time.
-    let bytes;
-    try { bytes = await fs.readFile(local); } catch { const c = `${cache}/c-${id}.${e}`; await copyLocal(local, c); bytes = await fs.readFile(c); }
-    return { kind: "xlsx", src: zipSource(bytes), cleanup: [local !== file ? local : null] };
+    let bytes, copy = null;
+    try { bytes = await fs.readFile(local); } catch { copy = `${cache}/c-${id}.${e}`; await copyLocal(local, copy); bytes = await fs.readFile(copy); }
+    return { kind: "xlsx", src: zipSource(bytes), cleanup: [copy, local !== file ? local : null] };
   }
   // CSV / TSV / TXT.
   let path = local, copied = null;
@@ -273,7 +273,13 @@ export default class Sheet extends View {
     this.sx = Math.max(0, colX(this.sh, Math.max(tl.c, fc)) - colX(this.sh, fc));
     this.sy = Math.max(0, rowY(this.sh, Math.max(tl.r, fr)) - rowY(this.sh, fr));
     this.sel = { r: Math.max(tl.r, fr), c: Math.max(tl.c, fc) };
-    for (const d of this.sh.drawings) if (d.kind === "image" && !this.media[d.media]) this.media[d.media] = await mediaPath(this.wb.src, d.media, this.id);
+    for (const d of this.sh.drawings) {
+      if (d.kind !== "image" || this.media[d.media]) continue;
+      const rel = await mediaPath(this.wb.src, d.media, this.id);
+      this.media[d.media] = rel;
+      // A picture written to the cache (not one in the unzipped folder) goes with the tab too.
+      if (rel && rel.startsWith(`${CACHE}/m-`)) (this.cleanup ??= []).push(`${appHome()}/${rel}`);
+    }
     cx?.notify();
   }
 
