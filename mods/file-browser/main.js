@@ -1,9 +1,12 @@
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 // file-browser: the shipped Files panel, cloned. Changed: spreadsheets (.xlsx .xlsm .xls .csv .tsv)
-// open in the sheet-viewer viewer, in a new tab, instead of as raw text.
+// open in the sheet-viewer mod, in a new tab, instead of as raw text, when that mod is installed.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, run } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, run, appHome } from "herdr";
+import * as fs from "fs/promises";
+
+const SHEETS = /\.(xlsx|xlsm|xls|csv|tsv)$/i;
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -130,11 +133,21 @@ export default class Files extends View {
   }
 
   show(path, cx) {
-    // Spreadsheets open in the sheet-viewer viewer, in a tab of their own; the tree stays.
-    if (path && /\.(xlsx|xlsm|xls|csv|tsv)$/i.test(path)) {
-      run("tab.new", { name: path.split("/").pop(), mod: "sheet-viewer", props: { file: `${this.root}/${path}`, on: this.on ?? null } });
+    // Spreadsheets open in the sheet-viewer mod, in a tab of their own, when it's installed (checked on
+    // each click, so installing it later works at once); the tree stays. Without it: text, as shipped.
+    if (path && cx && SHEETS.test(path)) {
+      const file = `${this.root}/${path}`, on = this.on ?? null;
+      cx.spawn(async cx => {
+        const viewer = await fs.exists(`${appHome()}/mods/sheet-viewer/main.js`).catch(() => false);
+        if (viewer) run("tab.new", { name: path.split("/").pop(), mod: "sheet-viewer", props: { file, on } });
+        else { this.preview(path, cx); cx.notify(); }
+      });
       return;
     }
+    this.preview(path, cx);
+  }
+
+  preview(path, cx) {
     this.code?.release(); this.code = null; this.file = path; this.fileError = null;
     if (!path || !cx) return;
     const context = this.context, root = this.root, on = this.on;

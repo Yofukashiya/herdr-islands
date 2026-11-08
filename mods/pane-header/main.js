@@ -57,7 +57,7 @@ export default class Pane extends View {
           cx.stop_propagation();
           run(command, args);
         }))
-      .child(svg(`mods/pane/${icon}.svg`).size(14));
+      .child(svg(`mods/pane-header/${icon}.svg`).size(14));
   }
 
   render(cx) {
@@ -89,7 +89,7 @@ export default class Pane extends View {
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_none().truncate().max_w(260).font_medium().text_color(lit ? t.foreground : split ? t.muted : t.foreground).child(name))
       .child(div().flex_1().truncate().text_color(t.dim).child(folder(p.cwd)))
-      .when(st === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
+      .when(st === "working", el => el.child(svg("mods/pane-header/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
       // "Needs you" breathes, so a blocked agent in a pane you aren't looking at is noticed.
       .when(st === "blocked", el => el.child(div().id(`ph-need-${pane}`).flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked)
         .loop("opacity", { from: 0.55, to: 1, period: 1600 }).child("Needs you")))

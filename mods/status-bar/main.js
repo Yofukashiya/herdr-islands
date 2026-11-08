@@ -134,7 +134,7 @@ export default class Usage extends View {
     const needs = list.filter((a) => a.status === "blocked").length;
     const working = list.some((a) => a.status === "working");
     const label = (icon, text, color) =>
-      h_flex().flex_none().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13).text_color(color)).child(div().max_w(220).truncate().child(text));
+      h_flex().flex_none().gap(6).items_center().child(svg(`mods/status-bar/${icon}.svg`).size(13).text_color(color)).child(div().max_w(220).truncate().child(text));
     // As herdr-gpui: only services with numbers, closest to a limit first
     // (a stable sort keeps equals in registry order). The rest wait in the popup.
     const shown = data.readings.filter(hasNumbers).sort((a, b) => urgency(b) - urgency(a));

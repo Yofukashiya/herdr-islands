@@ -320,7 +320,7 @@ export default class Mods extends View {
       out.push(h_flex().id(`grp-${g.id}`).mx(10).mt(12).mb(2).gap(6).items_center().cursor_pointer().text_size(11).font_semibold().text_color(t.dim)
         .hover((s) => s.text_color(t.foreground))
         .on_click((_e, cx2) => { this.folds = { ...this.folds, [g.id]: !folded }; save("folds", this.folds); cx2.notify(); })
-        .child(svg(`mods/sidebar-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11))
+        .child(svg(`mods/mod-manager/chevron-${folded ? "right" : "down"}.svg`).size(11))
         .child(g.title.toUpperCase())
         .child(div().font_normal().child(String(items.length)))
         .when(errs > 0, (e) => e.child(div().size(6).rounded_full().bg(t.blocked)))
@@ -356,20 +356,26 @@ export default class Mods extends View {
 
   renderLook(t, cx) {
     const root = layout();
-    if (findId(root, "brand")?.content?.mod !== "sidebar-chrome") {
-      return v_flex().p(16).text_size(12.5).text_color(t.dim).whitespace_normal().child("These settings are for the Islands layout. Switch to it in Layouts.");
-    }
-    const s = this.settings;
     const dark = settings()?.dark !== false;
     const picked = typeof root?.theme === "string" ? root.theme : root?.theme?.[dark ? "dark" : "light"] ?? null;
     const themes = dark ? this.themes.dark : this.themes.light;
+    const themeRow = this.row(t, "Theme", h_flex().flex_wrap().gap(5).children(themes.map((n) => this.chip(t, `th-${n}`, n, picked === n || (!picked && n === (dark ? "graphite" : "paper")), () => run("app.theme", { name: n })))));
+    // The theme works in any layout. The rest are settings of the Islands look, which sidebar-chrome
+    // reads, so they show only in a layout that uses it.
+    if (findId(root, "brand")?.content?.mod !== "sidebar-chrome") {
+      return v_flex().pb(12)
+        .child(this.block(t, "Color", [themeRow]))
+        .child(div().px(16).py(8).text_size(12).text_color(t.dim).whitespace_normal()
+          .child("Accent, surfaces and the agents radar belong to the Islands look (sidebar-chrome). They show here in a layout that uses it, such as Islands."));
+    }
+    const s = this.settings;
     const accent = s.accent ?? "space";
     const backdrop = s.backdrop === "gradient" || s.backdrop === "plain" ? s.backdrop : "grid";
     const pct = (k) => { const v = typeof s[k] === "number" ? s[k] : 1; return PCT.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a)); };
     const steps = (k, idp) => h_flex().gap(4).children(PCT.map((p) => this.chip(t, `${idp}-${p}`, `${Math.round(p * 100)}%`, pct(k) === p, () => this.setSetting(k, p, cx))));
     return v_flex().pb(12)
       .child(this.block(t, "Color", [
-        this.row(t, "Theme", h_flex().flex_wrap().gap(5).children(themes.map((n) => this.chip(t, `th-${n}`, n, picked === n || (!picked && n === (dark ? "graphite" : "paper")), () => run("app.theme", { name: n }))))),
+        themeRow,
         this.row(t, "Accent", v_flex().gap(6)
           .child(h_flex().gap(5)
             .child(this.chip(t, "ac-space", "Space color", accent === "space", () => this.setSetting("accent", "space", cx)))
@@ -416,7 +422,7 @@ export default class Mods extends View {
     const body = this.view === "look" ? this.renderLook(t, cx) : this.view === "layouts" ? this.renderLayouts(t) : this.renderMods(t, cx);
     return v_flex().id("mods").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(svg("mods/tab-bar/puzzle.svg").size(14).text_color(t.muted))
+        .child(svg("mods/mod-manager/puzzle.svg").size(14).text_color(t.muted))
         .child(div().font_semibold().child("Mods"))
         .child(div().flex_1())
         .child(div().id("mods-refresh").p(4).rounded(5).cursor_pointer().text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))

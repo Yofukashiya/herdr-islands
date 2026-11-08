@@ -1,4 +1,5 @@
 {
-  "place": "none",
-  "title": "Status bar"
+  "place": "bottom",
+  "title": "Status bar",
+  "size": 32
 }

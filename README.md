@@ -53,6 +53,21 @@ On a Mac, the first time the status bar asks for your Claude limits, macOS asks 
 read "Claude Code-credentials" from the Keychain (that's where Claude Code keeps its login). Click
 **Always Allow**. If you deny it, Claude just doesn't show up in the bar.
 
+### Just some mods
+
+Every mod also works on its own, in your own layout. Name the ones you want:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) status-bar sheet-viewer
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.sh | sh -s -- status-bar sheet-viewer
+```
+
+This installs only those mods, with no layout and no layout switch, and prints where each one goes.
+The table below says the same, and each mod's README has the details.
+
 ### Update and uninstall
 
 To update, run the same command again. Your Look settings (`mods/sidebar-chrome/settings.json`) are
@@ -65,18 +80,21 @@ To uninstall, switch to another layout (Ctrl+Shift+L), then delete `layouts/isla
 
 ## What's inside
 
-| Mod | What it does |
-|---|---|
-| `sidebar-chrome` | Top and bottom cards of the sidebar; applies the look settings |
-| `space-list` | Spaces and their colors |
-| `agent-list` | Agents, with a preview of an agent's screen on hover |
-| `tab-bar` | Pill tabs, the Files / Changes / Mods buttons, window buttons |
-| `pane-header` | Pane header with a focus line |
-| `file-browser` | The Files panel; opens spreadsheets in the viewer |
-| `mod-manager` | The Mods panel |
-| `status-bar` | Plan limits, CPU, memory |
-| `agent-radar` | A drawer of agents at the window edge |
-| `sheet-viewer` | Spreadsheet viewer |
+| Mod | What it does | On its own |
+|---|---|---|
+| [`sidebar-chrome`](mods/sidebar-chrome/README.md) | Top and bottom cards of the sidebar; applies the look settings | replaces `workspace-chrome` |
+| [`space-list`](mods/space-list/README.md) | Spaces and their colors | replaces `spaces` |
+| [`agent-list`](mods/agent-list/README.md) | Agents, with a preview of an agent's screen on hover | replaces `agents` |
+| [`tab-bar`](mods/tab-bar/README.md) | Pill tabs, the Files / Changes / Mods buttons, window buttons | replaces `tabs` |
+| [`pane-header`](mods/pane-header/README.md) | Pane header with a focus line | the pane header |
+| [`file-browser`](mods/file-browser/README.md) | The Files panel; opens spreadsheets in the viewer | replaces `files` |
+| [`mod-manager`](mods/mod-manager/README.md) | The Mods panel | a dialog: `mod.open` |
+| [`status-bar`](mods/status-bar/README.md) | Plan limits, CPU, memory | docks at the bottom by itself |
+| [`agent-radar`](mods/agent-radar/README.md) | A drawer of agents at the window edge | a floating block |
+| [`sheet-viewer`](mods/sheet-viewer/README.md) | Spreadsheet viewer | opens from `file-browser` or the CLI |
+
+None of them needs another: links between them are optional extras. For example, `space-list` gives the
+others the space color; without it they use the theme's accent.
 
 **Look.** Based on [Islands](https://github.com/CodeyPacker/herdr-mods/tree/main/islands) by Cody Packer.
 The backdrop idea comes from [herdr-van](https://github.com/VanKurnia/herdr-van): a grid on near-black
@@ -213,6 +231,10 @@ With those tokens it asks each service for your limits every 10 minutes: api.ant
 opencode.ai, cursor.com. These endpoints are undocumented and may stop working one day. Nothing is sent
 anywhere else. For CPU and memory it runs `typeperf` and once `powershell` on Windows, or `iostat`,
 `vm_stat` and `sysctl` on macOS.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

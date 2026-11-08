@@ -34,8 +34,14 @@ reviews:
         - A mod may restyle only the Islands layout, never other layouts the person uses.
         - The status-bar mod reads CLI login tokens and sends each one only to its own service;
           flag anything that would send them elsewhere or log them.
+        - Every mod must work on its own, installed without the others: icons come from its own
+          folder (`mods/<self>/...`), and any use of another mod (shared `islands.*` keys, the
+          sheet-viewer, sidebar-chrome's settings) needs a fallback when that mod is missing.
     - path: "**/mod.json"
-      instructions: "Must be valid JSON. Herdr docks a mod folder whose mod.json is missing or invalid as an extra panel."
+      instructions: |
+        Must be valid JSON. Herdr docks a mod folder whose mod.json is missing or invalid as an extra panel.
+        "place" is where the mod goes when installed on its own (the first time Herdr sees it); the full
+        Islands installer writes "none" instead, so keep any other value meaningful for a standalone install.
     - path: "install.ps1"
       instructions: |
         Runs as `irm ... | iex` and as a file, in Windows PowerShell 5.1 and PowerShell 7.
