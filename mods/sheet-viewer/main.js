@@ -47,7 +47,8 @@ function fitGeneral(v, fits, sep) {
     const s = String(Number(v.toFixed(d)));
     if (s.includes("e")) break;
     const t = s.replace(".", sep);
-    if (fits(t)) { fixed = t; break; }
+    // A nonzero value never shows as 0 (1e-10 rounds to it): then only E notation, or "####".
+    if ((v === 0 || Number(s) !== 0) && fits(t)) { fixed = t; break; }
   }
   for (let d = 5; d >= 0; d--) {
     // No trailing zeros in the mantissa, as Excel writes it: 4.2E+01, not 4.20E+01.

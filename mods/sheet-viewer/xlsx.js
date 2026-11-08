@@ -440,16 +440,18 @@ function numericCells(sheet, ranges) {
   return out;
 }
 
-function threshold(cfvo, nums, get) {
+/** A rule threshold from its cfvo. `stats` = { min, max, sorted() }: only percentiles need the
+ *  values sorted, and sorted() does that once per rule. */
+function threshold(cfvo, stats, get) {
   const type = cfvo?.attrs.type ?? "min";
   const v = cfvo?.attrs.val;
-  const sorted = nums.slice().sort((a, b) => a - b);
-  const min = sorted[0], max = sorted[sorted.length - 1];
+  const { min, max } = stats;
   if (type === "min") return min;
   if (type === "max") return max;
   if (type === "num") return Number(v);
   if (type === "percent") return min + ((max - min) * Number(v)) / 100;
   if (type === "percentile") {
+    const sorted = stats.sorted();
     const k = (Number(v) / 100) * (sorted.length - 1);
     const lo = Math.floor(k), hi = Math.ceil(k);
     return sorted[lo] + (sorted[hi] - sorted[lo]) * (k - lo);
@@ -505,14 +507,27 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
       for (let c = rg.c1; c <= rg.c2; c++) cells.push({ rg, r, c, v: sheet.cells.get(key(r, c))?.v ?? null });
       if ((++spin & 255) === 0) await tick(true);
     }
-    const nums = cells.filter((x) => typeof x.v === "number").map((x) => x.v);
+    // The numbers, their min and max in the same pass (yielding like the rest), and a sort only
+    // when a percentile or a rank needs it: a Float64Array sorts numerically inside the engine,
+    // without a JS comparator call per comparison.
+    const nums = [];
+    let numMin = Infinity, numMax = -Infinity;
+    for (const x of cells) {
+      if ((++spin & 1023) === 0) await tick(true);
+      if (typeof x.v !== "number") continue;
+      nums.push(x.v);
+      if (x.v < numMin) numMin = x.v;
+      if (x.v > numMax) numMax = x.v;
+    }
+    let sortedOnce = null;
+    const stats = { min: numMin, max: numMax, sorted: () => (sortedOnce ??= Float64Array.from(nums).sort()) };
     const hit = (x, patch) => { put(x.r, x.c, patch); if (stop) stopped.add(key(x.r, x.c)); };
     await tick(true);
     if (type === "colorScale") {
       const cs = child(rule, "colorScale");
       const cfvos = kids(cs, "cfvo"), colors = kids(cs, "color").map((e) => resolveColor(e.attrs, wb.theme, wb.indexed));
       if (!nums.length || colors.length < 2) continue;
-      const th = cfvos.map((v) => threshold(v, nums, (f) => evaluate(f, ctx)));
+      const th = cfvos.map((v) => threshold(v, stats, (f) => evaluate(f, ctx)));
       for (const x of cells) {
         if ((++spin & 1023) === 0) await tick(true);
         if (typeof x.v !== "number") continue;
@@ -526,7 +541,7 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
       const cfvos = kids(db, "cfvo");
       const col = resolveColor(child(db, "color")?.attrs, wb.theme, wb.indexed) ?? "#638ec6";
       if (!nums.length) continue;
-      const lo = threshold(cfvos[0], nums, (f) => evaluate(f, ctx)), hi = threshold(cfvos[1], nums, (f) => evaluate(f, ctx));
+      const lo = threshold(cfvos[0], stats, (f) => evaluate(f, ctx)), hi = threshold(cfvos[1], stats, (f) => evaluate(f, ctx));
       const minLen = Number(db.attrs.minLength ?? 10) / 100, maxLen = Number(db.attrs.maxLength ?? 90) / 100;
       const showValue = db.attrs.showValue !== "0";
       for (const x of cells) {
@@ -541,7 +556,7 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
       const set = is?.attrs.iconSet ?? "3TrafficLights1";
       const reverse = is?.attrs.reverse === "1";
       if (!nums.length) continue;
-      const th = cfvos.map((v) => threshold(v.attrs.type === "percent" ? v : v, nums, (f) => evaluate(f, ctx)));
+      const th = cfvos.map((v) => threshold(v, stats, (f) => evaluate(f, ctx)));
       const n = th.length;
       for (const x of cells) {
         if ((++spin & 1023) === 0) await tick(true);
@@ -560,9 +575,9 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
       const counts = new Map();
       if (type === "top10" && nums.length) {
         const rank = Number(rule.attrs.rank ?? 10), pct = rule.attrs.percent === "1", bottom = rule.attrs.bottom === "1";
-        const sorted = nums.slice().sort((p, q) => (bottom ? p - q : q - p));
-        const count = pct ? Math.max(1, Math.floor((sorted.length * rank) / 100)) : rank;
-        edge = sorted[Math.min(count, sorted.length) - 1];
+        const asc = stats.sorted(), n = Math.min(pct ? Math.max(1, Math.floor((asc.length * rank) / 100)) : rank, asc.length);
+        // The n-th largest (top) or n-th smallest (bottom) value.
+        edge = n > 0 ? (bottom ? asc[n - 1] : asc[asc.length - n]) : null;
       } else if (type === "aboveAverage" && nums.length) {
         avg = nums.reduce((s, q) => s + q, 0) / nums.length;
         sd = rule.attrs.stdDev ? Math.sqrt(nums.reduce((s, q) => s + (q - avg) ** 2, 0) / nums.length) * Number(rule.attrs.stdDev) : 0;
