@@ -6,6 +6,27 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-08
+
+### Added
+
+- **Files panel opens files in tabs.** A left click opens a file here in Herdr, in a tab of its own:
+  - code and text read-only, with syntax colors and line numbers;
+  - pictures fitted to the tab;
+  - spreadsheets in the spreadsheet viewer.
+
+  A second click goes to the tab already open. The panel used to show a small read-only preview in
+  its own narrow column.
+- **Files right-click menu:**
+  - on a file, a folder or the empty part of the tree;
+  - **Open with default app**, **Open in VS Code / Cursor** (when installed), a terminal editor from
+    `settings.json`;
+  - **Show in Explorer / Finder**, **Copy path**, **Copy relative path**, **Open terminal here**.
+
+  For files on another machine, only what works there.
+- **File tab bar:** each file tab has a bar with its folder and buttons to open it with the default
+  app, show it in Explorer / Finder and copy its path.
+
 ## [1.1.3] - 2026-11-08
 
 The rest of CodeRabbit's review of 1.1.1 (the nitpicks), and known limits filed as issues
@@ -182,7 +203,8 @@ First release.
 - **Status bar:** every reload of the mod asked all services again, so Claude answered "rate limited";
   the request schedule now survives reloads.
 
-[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.0...v1.1.1

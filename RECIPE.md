@@ -40,8 +40,10 @@ Folded (the toggle), the sidebar is a 44px rail (76px on macOS) of icons only.
 2. **The panes and the side panel**, side by side:
    - **Panes:** the active tab's terminals. Each is a card with a 30px header: program icon, name,
      folder, status. When the pointer is over it, split right, split down, zoom and close fade in.
-   - **Side panel:** hidden until a panel button opens it, 368px. It holds Files (a tree; spreadsheets
-     open in a new tab), Changes (Herdr's own) or Mods.
+   - **Side panel:** hidden until a panel button opens it, 368px. It holds Files, Changes (Herdr's own)
+     or Mods. Files is a tree: a left click opens a file in a tab of its own (code with syntax colors
+     and line numbers, pictures fitted, spreadsheets in the viewer), a right click opens a menu (open
+     with the default app or VS Code, Explorer/Finder, copy path, terminal here).
 3. **Status bar**, 32px card:
    - **Left:** a chip with the space's letter tile and name, the git branch, and an agents count with a
      dot.
@@ -140,8 +142,16 @@ formatting, tables, charts, pictures and comments, with sheet tabs at the bottom
     `mods`; it toggles `panel` and selects `panel-body`.
   - `pane-header`: pane headers, with `.transition("opacity")` for buttons and the focus line, and
     `.loop` for "Needs you".
-  - `file-browser` (`files`): a clone of `files`. For `.xlsx/.xlsm/.csv/.tsv`, when `sheet-viewer` is
-    installed, it runs `tab.new {mod: "sheet-viewer", props: {file, on}}`.
+  - `file-browser` (`files`): a clone of `files`, one mod in three roles by `props()`. Note that props
+    come through `props()`, not `init`'s argument.
+    - **None:** the panel.
+    - **`{file, on}`:** a viewer tab, opened with `tab.new {mod: "file-browser"}`. It shows an
+      `EditorState` (readonly, `line_numbers`) for text, or `image()` of a copy in its `.cache`, sized
+      from the picture's header.
+    - **`{menu}`:** the right-click popup, `openOverlay({kind: "popup"})`. It uses `cx.open_url` for
+      `file://` and `vscode://file/…` and `cx.write_to_clipboard`.
+
+    Spreadsheets go to `tab.new {mod: "sheet-viewer"}` when that mod is installed.
   - `mod-manager` (`mods`): the Mods panel; on its own it opens as a dialog with `mod.open`.
   - `status-bar` (`status`), from DanielFGray/herdr-config's `usage`:
     - **Limits:** reads CLI logins (`~/.claude/.credentials.json` or the macOS Keychain via `security`,

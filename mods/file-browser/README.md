@@ -2,8 +2,19 @@
 
 **Files** for [Herdr app](https://herdr.dev). Part of [Herdr Islands](../../README.md), and it works on its own.
 
-Herdr's Files panel (the shipped `files` mod, cloned), with one change: spreadsheets (`.xlsx`,
-`.xlsm`, `.csv`, `.tsv`) open in `sheet-viewer` in a tab of their own.
+Herdr's Files panel (the shipped `files` mod, cloned), made to open files rather than preview them:
+- **Left click** opens a file here in Herdr, in a tab of its own. Code and text open read-only, with syntax
+  colors and line numbers; pictures (PNG, JPEG, GIF, WebP, BMP, ICO, SVG) are fitted to the tab;
+  spreadsheets open in `sheet-viewer`. A file that's already open goes to its tab.
+- **Right click** on a file, a folder or the empty part of the tree opens a menu for everything else:
+  - Open with default app;
+  - Open in VS Code / Cursor (when installed);
+  - a terminal editor from settings;
+  - Show in Explorer / Finder;
+  - Copy path / Copy relative path;
+  - Open terminal here.
+
+  For files on another machine, only the items that work there show.
 
 ## Install only this mod
 
@@ -29,7 +40,15 @@ Use it where your layout has Herdr's `files`:
 { "id": "files", "type": "block", "content": { "mod": "file-browser" } }
 ```
 
+To open files in a terminal editor from the menu, create `settings.json` in this folder:
+
+```json
+{ "terminal_editor": ["nvim"] }
+```
+
+The menu then has "Open in nvim", which runs it in a new tab.
+
 ## Works with
 
-Install `sheet-viewer` too. Without it, spreadsheets show as text, like in the shipped Files panel.
-It checks on each click, so installing the viewer later works at once.
+Install `sheet-viewer` too, for spreadsheets. Without it they open as text (CSV) or with a button
+to open them in their program (xlsx).

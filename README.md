@@ -111,7 +111,7 @@ To uninstall, switch to another layout (Ctrl+Shift+L), then delete `layouts/isla
 | [`agent-list`](mods/agent-list/README.md) | Agents, with a preview of an agent's screen on hover | replaces `agents` |
 | [`tab-bar`](mods/tab-bar/README.md) | Pill tabs, the Files / Changes / Mods buttons, window buttons | replaces `tabs` |
 | [`pane-header`](mods/pane-header/README.md) | Pane header with a focus line | the pane header |
-| [`file-browser`](mods/file-browser/README.md) | The Files panel; opens spreadsheets in the viewer | replaces `files` |
+| [`file-browser`](mods/file-browser/README.md) | The Files panel: opens files in tabs, right-click menu | replaces `files` |
 | [`mod-manager`](mods/mod-manager/README.md) | The Mods panel | a dialog: `mod.open` |
 | [`status-bar`](mods/status-bar/README.md) | Plan limits, CPU, memory | docks at the bottom by itself |
 | [`agent-radar`](mods/agent-radar/README.md) | A drawer of agents at the window edge | a floating block |
@@ -199,6 +199,24 @@ To make a backdrop for another theme or size, change the colors at the top of
 `backgrounds/make_islands_grid.py` and run `python3 make_islands_grid.py my-grid.png`. Save it under a
 **new** name and point `backdrop` at it. Herdr caches images by path, so a file replaced under its old
 name only shows after a restart.
+
+## Files panel
+
+- **Left click** a file to open it here in Herdr, in a tab of its own:
+  - code and text: read-only, with syntax colors and line numbers;
+  - pictures: fitted to the tab;
+  - spreadsheets: in the spreadsheet viewer.
+
+  A file that's already open goes to its tab.
+- **Right click** a file, a folder or the empty part of the tree for everything else:
+  - **Open with default app**;
+  - **Open in VS Code / Cursor**, when installed;
+  - **Show in Explorer / Finder**;
+  - **Copy path** / **Copy relative path**;
+  - **Open terminal here**.
+
+To open files in a terminal editor from that menu, put `{ "terminal_editor": ["nvim"] }` in
+`mods/file-browser/settings.json`.
 
 ## Spreadsheet viewer
 
