@@ -6,6 +6,23 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-08
+
+### Added
+
+- **Update notices:**
+  - `sidebar-chrome` asks GitHub for a newer release once a day and posts one notice per version;
+    clicking it opens Mods.
+  - The Mods panel shows the installed version with a **Check for updates** button: the icon spins while
+    it checks, and the answer pulses for a moment.
+  - When a release is out, a card above the tabs offers **What's new** and **Update**.
+  - **Install updates automatically** in Mods → Look (off by default) installs new releases unasked.
+- **Installer modes:**
+  - `--update` updates only what is installed, keeps your settings and doesn't switch layouts.
+  - `--ref <tag>` installs a given release.
+- `version` in every `mod.json`, and `tools/release.py` to move it together with the changelog.
+- `RECIPE.md` and `preview.png`, for the herdr.dev gallery.
+
 ## [1.0.0] - 2026-11-08
 
 First release.
@@ -80,5 +97,6 @@ First release.
 - **Status bar:** every reload of the mod asked all services again, so Claude answered "rate limited";
   the request schedule now survives reloads.
 
-[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Yofukashiya/herdr-islands/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Yofukashiya/herdr-islands/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Yofukashiya/herdr-islands/releases/tag/v1.0.0

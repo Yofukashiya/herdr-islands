@@ -4,8 +4,9 @@
 #   irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1 | iex
 # Only some mods, for your own layout:
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) status-bar sheet-viewer
+# Update what is installed (what the Mods panel runs):  ... --update [--ref v1.2.0]
 # From a clone:
-#   powershell -ExecutionPolicy Bypass -File install.ps1 [mod ...]
+#   powershell -ExecutionPolicy Bypass -File install.ps1 [mod ...] [--update] [--ref <tag>]
 #
 # Safe to run while Herdr is open and safe to run again: an update keeps your
 # Look settings (mods/sidebar-chrome/settings.json).
@@ -34,22 +35,45 @@
     'sheet-viewer'   = 'Spreadsheets open in it from file-browser, or: herdr-app do tab.new --mod sheet-viewer --props ''{"file":"C:/path/book.xlsx"}''.'
   }
 
-  $picked = @($args | ForEach-Object { "$_" -split ',' } | Where-Object { $_ })
-  if ($env:HERDR_ISLANDS_MODS) { $picked += @($env:HERDR_ISLANDS_MODS -split '[,\s]+' | Where-Object { $_ }) }
-  $single = $picked.Count -gt 0
-  $unknown = @($picked | Where-Object { $all -notcontains $_ })
-  if ($unknown) {
-    Write-Host "Unknown mod: $($unknown -join ', '). Mods: $($all -join ', ')." -ForegroundColor Red
-    return
+  # Arguments: mod names (or "a,b"), --update, --ref <branch or tag>.
+  $update = $false
+  $ref = 'main'
+  $picked = @()
+  for ($i = 0; $i -lt $args.Count; $i++) {
+    $a = "$($args[$i])"
+    if ($a -eq '--update') { $update = $true }
+    elseif ($a -eq '--ref') { $i++; $ref = "$($args[$i])" }
+    else { $picked += @($a -split ',' | Where-Object { $_ }) }
   }
-  $mods = if ($single) { @($picked | Select-Object -Unique) } else { $all }
+  if ($env:HERDR_ISLANDS_MODS) { $picked += @($env:HERDR_ISLANDS_MODS -split '[,\s]+' | Where-Object { $_ }) }
+
+  function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
+  # An update runs unattended from the Mods panel, which reads the last line of its log and the exit code.
+  function Fail($text) {
+    Say $text Red
+    if ($update) { Say "islands-update: failed $text"; throw $text }
+  }
+
+  if ($ref -notmatch '^[A-Za-z0-9._/-]+$') { Fail "Bad --ref: $ref"; return }
+  $unknown = @($picked | Where-Object { $all -notcontains $_ })
+  if ($unknown) { Fail "Unknown mod: $($unknown -join ', '). Mods: $($all -join ', ')."; return }
 
   $target = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { Join-Path $HOME '.config\herdr-app' }
+  # full: the layout and every mod; pick: the named mods; update: whatever of this is installed.
+  if ($update) {
+    $mode = 'update'
+    $mods = @($all | Where-Object { Test-Path (Join-Path $target "mods\$_\mod.json") })
+    if (-not $mods) { Fail "Nothing from Herdr Islands is installed in $target."; return }
+  } elseif ($picked.Count) {
+    $mode = 'pick'
+    $mods = @($picked | Select-Object -Unique)
+  } else {
+    $mode = 'full'
+    $mods = $all
+  }
   # Staging lives inside the Herdr folder, so moving a finished mod folder into mods\ is a rename on
   # the same drive: Herdr sees it complete, never a folder without mod.json (which it would dock as a panel).
   $stage = Join-Path $target '.islands-install'
-
-  function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
 
   try {
     foreach ($d in 'mods', 'layouts', 'backgrounds') { New-Item -ItemType Directory -Force (Join-Path $target $d) | Out-Null }
@@ -61,10 +85,10 @@
       $src = $here
       Say "Installing from $src"
     } else {
-      Say "Downloading $repo..."
+      Say "Downloading $repo ($ref)..."
       [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
       $zip = Join-Path $stage 'src.zip'
-      Invoke-WebRequest -UseBasicParsing "https://codeload.github.com/$repo/zip/refs/heads/main" -OutFile $zip
+      Invoke-WebRequest -UseBasicParsing "https://codeload.github.com/$repo/zip/$ref" -OutFile $zip
       Expand-Archive $zip (Join-Path $stage 'src') -Force
       $src = (Get-ChildItem (Join-Path $stage 'src') -Directory | Select-Object -First 1).FullName
     }
@@ -82,7 +106,7 @@
       } else {
         $tmp = Join-Path $stage "new-$m"
         Copy-Item -Recurse $from $tmp
-        if (-not $single) {
+        if ($mode -eq 'full') {
           # The Islands layout places every mod itself; "none" keeps Herdr from also docking a new mod
           # into whatever layout is on screen right now (it does that once, the first time it sees a mod).
           $meta = Join-Path $tmp 'mod.json'
@@ -93,15 +117,18 @@
         Say "  installed  $m"
       }
     }
-    if (-not $single) {
+    if ($mode -eq 'full' -or ($mode -eq 'update' -and (Test-Path (Join-Path $target 'layouts\islands.json')))) {
       Copy-Item -Force (Join-Path $src 'layouts\islands.*') (Join-Path $target 'layouts')
       Say "  layout     islands"
     }
     # sidebar-chrome's default backdrop is this grid image.
-    if (-not $single -or $mods -contains 'sidebar-chrome') {
+    if ($mode -eq 'full' -or $mods -contains 'sidebar-chrome') {
       Copy-Item -Force (Join-Path $src 'backgrounds\*') (Join-Path $target 'backgrounds')
       Say "  backdrop   backgrounds\islands-grid.png"
     }
+  } catch {
+    if ($update) { Say "islands-update: failed $($_.Exception.Message)" }
+    throw
   } finally {
     if (Test-Path $stage) { Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue }
   }
@@ -120,7 +147,8 @@
     if (Test-Path $guess) { $cli = $guess }
   }
   if (-not $cli) {
-    if ($single) { Say "`nFiles are in place. Herdr app was not found; once it's installed:" Yellow; Hints }
+    if ($mode -eq 'update') { Say "islands-update: ok $ref"; return }
+    if ($mode -eq 'pick') { Say "`nFiles are in place. Herdr app was not found; once it's installed:" Yellow; Hints }
     else { Say "`nFiles are in place. Herdr app was not found: install it, open it and press Ctrl+Shift+L until Islands shows." Yellow }
     return
   }
@@ -133,13 +161,14 @@
     if ($LASTEXITCODE -ne 0) { $bad += $m; Say $out.Trim() Red }
   }
   if ($bad) {
-    Say "`nSome mods failed the check: $($bad -join ', ')." Red
-    if (-not $single) { Say 'The layout was not switched.' Red }
+    Fail "Some mods failed the check: $($bad -join ', ')."
+    if ($mode -eq 'full') { Say 'The layout was not switched.' Red }
     return
   }
   Say "  checked    $($mods.Count) mod(s)"
 
-  if ($single) {
+  if ($mode -eq 'update') { Say "islands-update: ok $ref"; return }
+  if ($mode -eq 'pick') {
     Say "`nDone. Next:" Green
     Hints
     return

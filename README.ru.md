@@ -68,6 +68,32 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 Так ставятся только эти моды, без раскладки и без её переключения, и скрипт пишет, куда поставить каждый.
 То же видно в таблице ниже, а подробности есть в README каждого мода.
 
+### Обновления
+
+Islands сам сообщает о новых релизах. Раз в сутки он спрашивает GitHub. Когда выходит новая версия:
+- Herdr показывает уведомление; клик по нему открывает Mods.
+- В панели Mods появляются **What's new** и **Update**.
+- **Update** ставит релиз в фоне, и Herdr перезагружает моды. Настройки сохраняются, раскладка
+  не переключается.
+
+Текущая версия и кнопка **Check for updates** — вверху Mods.
+
+Чтобы релизы ставились без вопросов, включи **Install updates automatically** в Mods → Look или впиши
+`"auto_update": true` в `mods/sidebar-chrome/settings.json`. По умолчанию это выключено: так установщик
+нового релиза запускается сам.
+
+Вручную, или если ты поставил только некоторые моды (уведомлениям нужен `sidebar-chrome` или
+`mod-manager`), запусти команду установки ещё раз. С `--update` она обновит только то, что у тебя есть,
+и не переключит раскладку:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) --update
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.sh | sh -s -- --update
+```
+
 ### Обновление и удаление
 
 Чтобы обновить, запусти ту же команду ещё раз. Настройки Look (`mods/sidebar-chrome/settings.json`)
