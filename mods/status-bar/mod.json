@@ -1,5 +1,6 @@
 {
   "place": "bottom",
   "title": "Status bar",
-  "size": 32
+  "size": 32,
+  "version": "1.1.0"
 }

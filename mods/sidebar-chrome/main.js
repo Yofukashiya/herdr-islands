@@ -1,6 +1,10 @@
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { theme, run, props, window, shared, setShared, updates, layout, appHome, readTextFile, watchFolder, settings } from "herdr";
+import { theme, run, props, window, shared, setShared, updates, layout, appHome, readTextFile, watchFolder, settings, notify } from "herdr";
+import * as fs from "fs/promises";
+import { installedVersion, availableRelease, startUpdate, pendingResult, load, save } from "./update.js";
+
+const SELF = "sidebar-chrome";
 
 // A #rrggbb color at an opacity (0..1), as #rrggbbaa. Other colors stay as they are.
 const fade = (c, o) => typeof o !== "number" || o >= 1 || !/^#[0-9a-f]{6}$/i.test(c)
@@ -109,10 +113,59 @@ export default class WorkspaceChrome extends View {
         // "accent": "space" (each space's color, default), "theme" (the theme's), or "#rrggbb".
         const accent = typeof s.accent === "string" && (s.accent === "theme" || /^#[0-9a-f]{6}$/i.test(s.accent)) ? s.accent : "space";
         if (shared("islands.accentMode") !== accent) setShared("islands.accentMode", accent);
+        // "auto_update": true installs new Herdr Islands releases by itself (off by default).
+        const auto = s.auto_update === true;
+        if (shared("islands.autoUpdate") !== auto) setShared("islands.autoUpdate", auto);
         applyLook();
         await watchFolder(dir);
       }
     });
+    // Updates: ask GitHub (at most once a day) for a newer Herdr Islands release; tell the person
+    // once per version, or install it when "auto_update" is on; share it for the Mods panel.
+    cx.spawn(async (cx) => {
+      const wait = (ms) => new Promise((resolve) => cx.timer.after(ms, () => resolve()));
+      await wait(8000); // let the window settle first
+      for (;;) {
+        cx.notify(); // touching cx ends this loop when the copy goes
+        const running = await this.checkUpdate().catch(() => false);
+        await wait(running ? 3000 : 30 * 60e3);
+      }
+    });
+  }
+
+  /** One round of the update check; true while an update this mod started is still running. */
+  async checkUpdate() {
+    const done = await pendingResult(SELF);
+    if (done?.state === "running") return true;
+    if (done?.state === "ok") notify({ title: `Herdr Islands ${done.version}`, body: "Updated. Herdr reloaded the mods.", level: "success" });
+    if (done?.state === "failed") notify({ title: "Herdr Islands didn't update", body: `${done.detail}. Log: mods/${SELF}/.update.log`, level: "error" });
+    const current = await installedVersion(SELF);
+    let info;
+    try { info = await availableRelease(current); } catch { return false; } // offline: next round
+    setShared("islands.update", info ? { ...info, current } : null);
+    if (!info) return false;
+    if (shared("islands.autoUpdate") === true) {
+      if (load("update.tried", null) === info.version) return false; // once per version; then the Mods panel
+      save("update.tried", info.version);
+      try {
+        await startUpdate(info, SELF);
+        notify({ title: `Updating Herdr Islands to ${info.version}`, level: "info" });
+        return true;
+      } catch (e) {
+        notify({ title: "Herdr Islands didn't update", body: String(e?.message ?? e), level: "error" });
+        return false;
+      }
+    }
+    if (load("update.told", null) === info.version) return false;
+    save("update.told", info.version);
+    const manager = await fs.exists(`${appHome()}/mods/mod-manager/main.js`).catch(() => false);
+    notify({
+      title: `Herdr Islands ${info.version} is out`,
+      body: manager ? `You have ${current}. Open Mods to update.` : `You have ${current}. Run the install command again to update.`,
+      level: "info",
+      ...(manager ? { action: { name: "mod.open", args: { name: "mod-manager" } } } : {}),
+    });
+    return false;
   }
   // The theme or the appearance changed (render runs again for both): re-apply the look
   // once, after this frame, instead of leaving the old theme's colors in the layout.

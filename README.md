@@ -68,6 +68,29 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 This installs only those mods, with no layout and no layout switch, and prints where each one goes.
 The table below says the same, and each mod's README has the details.
 
+### Updates
+
+Islands tells you when a new release is out. Once a day it asks GitHub. When there's a newer version,
+Herdr shows a notice (click it to open Mods), and the Mods panel offers **What's new** and **Update**.
+**Update** installs that release in the background and Herdr reloads the mods: your settings stay, and
+your layout isn't switched. The version you have and a **Check for updates** button sit at the top of
+Mods.
+
+To get releases without being asked, turn on **Install updates automatically** in Mods → Look, or set
+`"auto_update": true` in `mods/sidebar-chrome/settings.json`. It's off by default, since it runs the
+new release's installer by itself.
+
+By hand, or if you installed only some mods (the notices need `sidebar-chrome` or `mod-manager`), run
+the install command again. With `--update` it updates only what you have, without switching layouts:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) --update
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.sh | sh -s -- --update
+```
+
 ### Update and uninstall
 
 To update, run the same command again. Your Look settings (`mods/sidebar-chrome/settings.json`) are

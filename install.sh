@@ -5,8 +5,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.sh | sh
 # Only some mods, for your own layout:
 #   curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.sh | sh -s -- status-bar sheet-viewer
+# Update what is installed (what the Mods panel runs):  ... | sh -s -- --update [--ref v1.2.0]
 # From a clone:
-#   sh install.sh [mod ...]
+#   sh install.sh [mod ...] [--update] [--ref <tag>]
 #
 # Safe to run while Herdr is open and safe to run again: an update keeps your
 # Look settings (mods/sidebar-chrome/settings.json).
@@ -35,21 +36,63 @@ hint() {
   esac
 }
 
-PICKED=$(printf '%s ' "$@" "${HERDR_ISLANDS_MODS:-}" | tr ',' ' ')
+# Arguments: mod names (or "a,b"), --update, --ref <branch or tag>.
+UPDATE=""
+REF=main
+PICKED=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --update) UPDATE=1 ;;
+    --ref) shift; REF=${1:-} ;;
+    *) PICKED="$PICKED $(printf '%s' "$1" | tr ',' ' ')" ;;
+  esac
+  shift
+done
+PICKED="$PICKED $(printf '%s' "${HERDR_ISLANDS_MODS:-}" | tr ',' ' ')"
+
+# An update runs unattended from the Mods panel, which reads the last line of its log and the exit code.
+fail() {
+  say "$1"
+  if [ -n "$UPDATE" ]; then say "islands-update: failed $1"; fi
+  exit 1
+}
+
+case $REF in
+  ''|*[!A-Za-z0-9._/-]*) fail "Bad --ref: $REF" ;;
+esac
+
 MODS=""
 for m in $PICKED; do
   case " $ALL " in
     *" $m "*) case " $MODS " in *" $m "*) ;; *) MODS="$MODS $m" ;; esac ;;
-    *) say "Unknown mod: $m. Mods: $ALL."; exit 1 ;;
+    *) fail "Unknown mod: $m. Mods: $ALL." ;;
   esac
 done
-if [ -n "$MODS" ]; then SINGLE=1; else SINGLE=""; MODS=$ALL; fi
 
 TARGET=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
+# full: the layout and every mod; pick: the named mods; update: whatever of this is installed.
+if [ -n "$UPDATE" ]; then
+  MODE=update
+  MODS=""
+  for m in $ALL; do [ -f "$TARGET/mods/$m/mod.json" ] && MODS="$MODS $m"; done
+  [ -n "$MODS" ] || fail "Nothing from Herdr Islands is installed in $TARGET."
+elif [ -n "$MODS" ]; then
+  MODE=pick
+else
+  MODE=full
+  MODS=$ALL
+fi
+
 # Staging lives inside the Herdr folder, so moving a finished mod folder into mods/ is a rename on
 # the same disk: Herdr sees it complete, never a folder without mod.json (which it would dock as a panel).
 STAGE=$TARGET/.islands-install
-trap 'rm -rf "$STAGE"' EXIT
+cleanup() {
+  rc=$?
+  rm -rf "$STAGE"
+  if [ "$rc" -ne 0 ] && [ "$MODE" = update ]; then say "islands-update: failed (exit $rc)"; fi
+  exit "$rc"
+}
+trap cleanup EXIT
 
 mkdir -p "$TARGET/mods" "$TARGET/layouts" "$TARGET/backgrounds"
 rm -rf "$STAGE"
@@ -60,8 +103,8 @@ if [ -n "$here" ] && [ -f "$here/install.sh" ] && [ -f "$here/mods/sheet-viewer/
   SRC=$here
   say "Installing from $SRC"
 else
-  say "Downloading $REPO..."
-  curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/main" | tar -xzf - -C "$STAGE"
+  say "Downloading $REPO ($REF)..."
+  curl -fsSL "https://codeload.github.com/$REPO/tar.gz/$REF" | tar -xzf - -C "$STAGE"
   SRC=$(find "$STAGE" -mindepth 1 -maxdepth 1 -type d | head -n 1)
 fi
 
@@ -76,7 +119,7 @@ for m in $MODS; do
     say "  updated    $m"
   else
     cp -R "$SRC/mods/$m" "$STAGE/new-$m"
-    if [ -z "$SINGLE" ]; then
+    if [ "$MODE" = full ]; then
       # The Islands layout places every mod itself; "none" keeps Herdr from also docking a new mod
       # into whatever layout is on screen right now (it does that once, the first time it sees a mod).
       sed 's/"place"[[:space:]]*:[[:space:]]*"[a-z]*"/"place": "none"/' "$STAGE/new-$m/mod.json" > "$STAGE/mod.json"
@@ -86,7 +129,7 @@ for m in $MODS; do
     say "  installed  $m"
   fi
 done
-if [ -z "$SINGLE" ]; then
+if [ "$MODE" = full ] || { [ "$MODE" = update ] && [ -f "$TARGET/layouts/islands.json" ]; }; then
   cp "$SRC"/layouts/islands.* "$TARGET/layouts/"
   say "  layout     islands"
 fi
@@ -105,8 +148,9 @@ hints() {
 if command -v herdr-app >/dev/null 2>&1; then CLI=herdr-app
 elif [ -x "$HOME/.local/bin/herdr-app" ]; then CLI=$HOME/.local/bin/herdr-app
 else
+  if [ "$MODE" = update ]; then say "islands-update: ok $REF"; exit 0; fi
   say ""
-  if [ -n "$SINGLE" ]; then
+  if [ "$MODE" = pick ]; then
     say "Files are in place. The herdr-app command was not found (open Herdr once from Applications to"
     say "create ~/.local/bin/herdr-app). Next:"
     hints
@@ -124,14 +168,13 @@ for m in $MODS; do
   if ! out=$("$CLI" check "$TARGET/mods/$m" 2>&1); then bad="$bad $m"; say "$out"; fi
 done
 if [ -n "$bad" ]; then
-  say ""
-  say "Some mods failed the check:$bad."
-  [ -n "$SINGLE" ] || say "The layout was not switched."
-  exit 1
+  [ "$MODE" = full ] && say "The layout was not switched."
+  fail "Some mods failed the check:$bad."
 fi
 say "  checked    $n mod(s)"
 
-if [ -n "$SINGLE" ]; then
+if [ "$MODE" = update ]; then say "islands-update: ok $REF"; exit 0; fi
+if [ "$MODE" = pick ]; then
   say ""
   say "Done. Next:"
   hints

@@ -11,8 +11,9 @@
 // layouts only take hide/show (they are read-only otherwise).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { theme, layout, layouts, shared, run, exec, appHome, readTextFile, writeTextFile, watchFolder, settings, window as hwin, home } from "herdr";
+import { theme, layout, layouts, shared, run, exec, appHome, readTextFile, writeTextFile, watchFolder, settings, window as hwin, home, notify } from "herdr";
 import * as fs from "fs/promises";
+import { installedVersion, availableRelease, startUpdate, pendingResult } from "./update.js";
 
 const SETTINGS = "mods/sidebar-chrome/settings.json";
 const BUILTIN_THEMES = { dark: ["graphite", "ink", "moss"], light: ["paper"] };
@@ -84,6 +85,10 @@ function openFolder(dir) {
   const p = platform();
   exec(p === "windows" ? "explorer" : p === "macos" ? "open" : "xdg-open", [p === "windows" ? dir.replace(/\//g, "\\") : dir]).catch(() => {});
 }
+function openUrl(url) {
+  const p = platform();
+  exec(p === "windows" ? "explorer" : p === "macos" ? "open" : "xdg-open", [url]).catch(() => {});
+}
 const load = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
@@ -103,6 +108,15 @@ export default class Mods extends View {
     this.folds = load("folds", Object.fromEntries(GROUPS.filter((g) => g.fold).map((g) => [g.id, true])));
     this.hover = null;
     this.parked = load("parked", {});
+    // Herdr Islands updates. sidebar-chrome checks in the background and shares what it found
+    // ("islands.update"); without it, this panel asks GitHub itself (at most once a day).
+    this.upd = { current: null, info: null, state: null, detail: null, checking: false, checked: false };
+    cx.spawn(async (cx) => {
+      this.upd.current = await installedVersion(SELF);
+      await this.followUpdate(cx);
+      if (shared("islands.update") === undefined) this.checkUpdate(cx, false);
+      cx.notify();
+    });
     this.refresh(cx);
     // Re-read when mods are added or removed.
     cx.spawn(async (cx) => {
@@ -215,6 +229,140 @@ export default class Mods extends View {
       run("layout.set", { layout: next });
     }
     cx.notify();
+  }
+
+  /** The release on offer: sidebar-chrome's finding, else this panel's own. */
+  updateInfo() {
+    const fromChrome = shared("islands.update");
+    return fromChrome === undefined ? this.upd.info : fromChrome;
+  }
+
+  checkUpdate(cx, force) {
+    if (this.upd.checking) return;
+    this.upd.checking = true;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      const wait = (ms) => new Promise((resolve) => cx.timer.after(ms, () => resolve()));
+      const started = Date.now();
+      try {
+        this.upd.current = await installedVersion(SELF);
+        this.upd.info = await availableRelease(this.upd.current, force);
+        this.upd.detail = null;
+      } catch (e) {
+        this.upd.detail = `Couldn't reach GitHub: ${String(e?.message ?? e).slice(0, 80)}`;
+      }
+      // A clicked check spins for at least a moment, or a fast answer looks like nothing happened.
+      if (force) await wait(Math.max(0, 700 - (Date.now() - started)));
+      this.upd.checking = false;
+      this.upd.checked = true;
+      if (force) {
+        // The answer pulses for a moment, then stays.
+        this.upd.flash = true;
+        cx.notify();
+        await wait(1800);
+        this.upd.flash = false;
+      }
+      cx.notify();
+    });
+  }
+
+  installUpdate(info, cx) {
+    this.upd.state = "running";
+    this.upd.detail = null;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        await startUpdate(info, SELF);
+        await this.followUpdate(cx);
+      } catch (e) {
+        this.upd.state = "failed";
+        this.upd.detail = String(e?.message ?? e);
+        cx.notify();
+      }
+    });
+  }
+
+  /** Watches an update this panel started until it lands (the panel reloads when its files change). */
+  async followUpdate(cx) {
+    for (;;) {
+      const r = await pendingResult(SELF);
+      if (!r) return;
+      this.upd.state = r.state;
+      if (r.state === "running") { cx.notify(); await new Promise((res) => cx.timer.after(3000, () => res())); continue; }
+      if (r.state === "ok") {
+        this.upd.info = null;
+        notify({ title: `Herdr Islands ${r.version}`, body: "Updated. Herdr reloaded the mods.", level: "success" });
+      } else {
+        this.upd.detail = r.detail;
+        notify({ title: "Herdr Islands didn't update", body: `${r.detail}. Log: mods/${SELF}/.update.log`, level: "error" });
+      }
+      cx.notify();
+      return;
+    }
+  }
+
+  /** The banner over the tabs: an update on offer, under way, or failed. */
+  renderUpdate(t, cx) {
+    const u = this.upd;
+    const info = this.updateInfo();
+    const button = (id, label, action, strong) => div().id(id).h(24).px(10).flex().flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
+      .when(strong, (e) => e.bg(t.accent).text_color("#ffffff").font_semibold())
+      .when(!strong, (e) => e.border(1).border_color(t.border).text_color(t.foreground).hover((s) => s.bg(t.hover)))
+      .on_click(action).child(label);
+    const card = (color, children) => v_flex().mx(10).mt(10).p(10).gap(8).rounded(10).border(1).border_color(color).bg(color + "14").children(children);
+    if (u.state === "running") {
+      return card(t.accent, [div().text_size(12.5).child(`Updating Herdr Islands${info ? ` to ${info.version}` : ""}… Herdr reloads the mods when it's done.`)]);
+    }
+    if (u.state === "failed") {
+      return card(t.blocked, [
+        div().text_size(12.5).whitespace_normal().child(`The update didn't go through: ${u.detail ?? "unknown error"}`),
+        h_flex().gap(6)
+          .child(button("upd-log", "Open log folder", () => openFolder(`${appHome()}/mods/${SELF}`)))
+          .when(Boolean(info), (e) => e.child(button("upd-retry", "Try again", () => this.installUpdate(info, cx), true))),
+      ]);
+    }
+    if (!info) return null;
+    return card(t.accent, [
+      v_flex().gap(2)
+        .child(div().text_size(13).font_semibold().child(`Herdr Islands ${info.version} is out`))
+        .child(div().text_size(11.5).text_color(t.dim).child(`You have ${info.current ?? u.current ?? "an older version"}. Your settings stay.`)),
+      h_flex().gap(6)
+        .when(Boolean(info.url), (e) => e.child(button("upd-notes", "What's new", () => openUrl(info.url))))
+        .child(div().flex_1())
+        .child(button("upd-go", "Update", () => this.installUpdate(info, cx), true)),
+    ]);
+  }
+
+  /** The last line of the Mods view: this install's version and a manual check. */
+  renderVersion(t, cx) {
+    const u = this.upd;
+    if (!u.current) return null;
+    const info = this.updateInfo();
+    const GREEN = "#22c55e";
+    // The space color when space-list shares one (Islands' accent), else the theme's.
+    const accent = /^#[0-9a-f]{6}$/i.test(shared("islands.accent") ?? "") ? shared("islands.accent") : t.accent;
+    const status = u.checking ? { text: "Checking GitHub…", color: t.muted }
+      : u.detail && !u.state ? { text: u.detail, color: t.blocked }
+      : info ? { text: `${info.version} is out: update above`, color: accent }
+      : u.checked ? { text: "Up to date", color: GREEN, icon: "check" }
+      : { text: "Updates are checked once a day", color: t.dim };
+    const icon = svg("mods/mod-manager/refresh.svg").size(13).flex_none().text_color(u.checking ? accent : t.muted);
+    return h_flex().id("upd-card").mx(10).mt(10).px(12).py(9).gap(10).items_center().rounded(10)
+      .border(1).border_color(info ? accent : t.border).bg(info ? accent + "14" : t.surface)
+      .child(div().size(28).flex_none().flex().items_center().justify_center().rounded(8).bg(accent + "26")
+        .child(svg("mods/mod-manager/puzzle.svg").size(15).text_color(accent)))
+      .child(v_flex().flex_1().min_w(0).gap(2)
+        .child(div().truncate().text_size(12.5).font_semibold().text_color(t.foreground).child(`Herdr Islands ${u.current}`))
+        .child(h_flex().id(`upd-status-${u.checking ? "busy" : u.flash ? "new" : "idle"}`).gap(4).items_center().text_size(11).text_color(status.color)
+          .when(status.icon === "check", (e) => e.child(svg("mods/mod-manager/check.svg").size(11).flex_none()))
+          .child(div().truncate().child(status.text))
+          .when(Boolean(u.flash), (e) => e.loop("opacity", { from: 0.35, to: 1, period: 600 }))))
+      .child(h_flex().id("upd-check").h(28).px(10).gap(6).flex_none().items_center().rounded(7).cursor_pointer().text_size(12)
+        .border(1).border_color(u.checking ? accent : t.border).bg(u.checking ? accent + "22" : t.background)
+        .text_color(t.foreground).hover((s) => s.bg(t.hover).border_color(accent))
+        .on_click((_e, cx2) => this.checkUpdate(cx2, true))
+        .child(u.checking ? icon.spin(800) : icon)
+        .child(u.checking ? "Checking…" : "Check for updates"));
   }
 
   check(m, cx) {
@@ -330,7 +478,7 @@ export default class Mods extends View {
       out.push(v_flex().mx(10).rounded(10).border(1).border_color(t.border).bg(t.surface).overflow_hidden()
         .children(items.map((e, i) => this.modRow(t, e, i === items.length - 1, cx))));
     }
-    return v_flex().pb(12).children(out);
+    return v_flex().pb(12).child(this.renderVersion(t, cx) ?? div()).children(out);
   }
 
   modRow(t, e, last, cx) {
@@ -398,6 +546,11 @@ export default class Mods extends View {
             .child(div().text_color(t.foreground).child("Agents radar"))
             .child(div().text_size(11).text_color(t.dim).child("Drawer with every agent on the window edge")))
           .child(this.toggleSwitch(t, "radar", s.radar !== false, () => this.setSetting("radar", s.radar === false, cx))),
+        h_flex().px(12).py(6).gap(10).items_center().text_size(12.5)
+          .child(v_flex().flex_1().min_w(0)
+            .child(div().text_color(t.foreground).child("Install updates automatically"))
+            .child(div().text_size(11).text_color(t.dim).whitespace_normal().child("New Herdr Islands releases install by themselves. Off: you're told, and update from here")))
+          .child(this.toggleSwitch(t, "auto-update", s.auto_update === true, () => this.setSetting("auto_update", s.auto_update !== true, cx))),
       ]));
   }
 
@@ -427,6 +580,7 @@ export default class Mods extends View {
         .child(div().flex_1())
         .child(div().id("mods-refresh").p(4).rounded(5).cursor_pointer().text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
           .on_click((_e, cx2) => this.refresh(cx2)).child(this.busy ? "…" : "⟳")))
+      .child(this.renderUpdate(t, cx) ?? div())
       .child(this.renderTabs(t, cx))
       .child(v_flex().id(`mods-scroll-${this.view}`).flex_1().min_h(0).overflow_y_scrollbar().child(body));
   }

@@ -7,6 +7,9 @@ A Mods panel with three tabs:
 - **Look:** the theme, plus the Islands look settings in a layout that uses `sidebar-chrome`.
 - **Layouts:** every layout with a preview.
 
+On top it shows the Herdr Islands version you have, with **Check for updates**; when a release is out,
+a card offers **What's new** and **Update**, which installs it in the background.
+
 ## Install only this mod
 
 Windows (PowerShell):
@@ -43,4 +46,6 @@ Or keep it in the side panel, as Islands does: a block with the id `mods` in the
 
 ## Works with
 
-The Look tab's Islands settings need `sidebar-chrome`; the theme choice works everywhere.
+The Look tab's Islands settings need `sidebar-chrome`; the theme choice works everywhere. With
+`sidebar-chrome` running, updates are found in the background and shared with this panel; without it,
+the panel checks when it opens.

@@ -5,6 +5,8 @@
 The top and bottom cards of the sidebar, in the Islands card style: Herdr's logo, search and
 the sidebar toggle on top; Settings and Add machine at the bottom. It also applies the Islands look
 (backdrop, card and pane opacity, accent), but only to a layout whose `brand` block is this mod.
+Once a day it also asks GitHub whether a newer Herdr Islands release is out, and tells you (or, with
+`"auto_update": true` in its settings, installs it).
 
 ## Install only this mod
 

@@ -5,5 +5,6 @@
     "kind": "dialog",
     "width": 440,
     "height": 0.8
-  }
+  },
+  "version": "1.1.0"
 }
