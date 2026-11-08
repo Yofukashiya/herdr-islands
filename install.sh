@@ -73,7 +73,8 @@ for m in $PICKED; do
 done
 
 TARGET=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
-# full: the layout and every mod; pick: the named mods; update: whatever of this is installed.
+# full: the layout and every mod; pick: the named mods; update: whatever of this is installed
+# (plus, below, any mod a new Islands layout needs).
 if [ -n "$UPDATE" ]; then
   MODE=update
   MODS=""

@@ -81,7 +81,8 @@ To get releases without being asked, turn on **Install updates automatically** i
 new release's installer by itself.
 
 By hand, or if you installed only some mods (the notices need `sidebar-chrome` or `mod-manager`), run
-the install command again. With `--update` it updates only what you have, without switching layouts:
+the install command again. With `--update` it updates only what you have, without switching layouts.
+If you have the Islands layout, it also installs any mod the new layout uses that you don't have yet:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/install.ps1))) --update

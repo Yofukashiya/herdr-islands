@@ -93,9 +93,14 @@ export default class Changes extends View {
         const head = await git(["rev-parse", "--verify", "HEAD"]);
         const stats = {};
         const results = head.code === 0 ? [await git(["diff", "HEAD", "--numstat", "-z", "--no-renames"])] : [await git(["diff", "--cached", "--numstat", "-z", "--no-renames"]), await git(["diff", "--numstat", "-z", "--no-renames"])];
+        // A huge diff has an entry per file: parsed in slices that yield (cx.timer.after), or the
+        // runtime would end the mod after ~0.5 s without one.
+        const pause = () => new Promise((resolve) => cx.timer.after(1, () => resolve()));
+        let parsed = 0;
         for (const result of results) {
           if (result.code !== 0) throw new Error(result.stderr);
           for (const entry of result.stdout.split("\0")) {
+            if (++parsed % 1000 === 0) { await pause(); if (key(this.where) !== context) return; }
             const [a, d, ...parts] = entry.split("\t");
             if (!parts.length) continue;
             const path = parts.join("\t"), old = stats[path] ?? { add: 0, del: 0 };
