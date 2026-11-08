@@ -4,7 +4,7 @@ import { div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
 import { readTextFile, theme, settings, appHome } from "herdr";
 import * as fs from "fs/promises";
-import { MOD, IMAGES, LANG, platform, baseName, dirName, nativePath, openDefault, reveal, revealLabel, forgetOpen, copyHere, removeHere, imageSize } from "./open.js";
+import { MOD, IMAGES, BINARY, MAX_READ, LANG, platform, baseName, dirName, nativePath, openDefault, reveal, revealLabel, forgetOpen, copyHere, removeHere, imageSize, fileSize } from "./open.js";
 
 const MAX_CHARS = 400000;
 const CACHE = `mods/${MOD}/.cache`;
@@ -26,15 +26,32 @@ export class FileViewer {
   }
 
   async loadText() {
-    let text = null;
+    // Archives, media, documents: never read, just offered to their program.
+    if (BINARY.test(this.file)) { this.state = "binary"; return; }
+    let text = null, tooBig = false;
     try { text = await readTextFile(this.file, { on: this.on }); }
     catch {
-      // Past readTextFile's 1 MiB: fs reads any size, for files under the home folder.
-      if (!this.on) text = await fs.readFile(this.file, "utf8").catch(() => null);
+      // Past readTextFile's 1 MiB, fs reads the whole file (under the home folder): only up to
+      // MAX_READ, after asking the OS for its size, so a huge log or dump stays out of memory.
+      if (!this.on) {
+        const size = await fileSize(this.file);
+        if (size !== null && size <= MAX_READ) {
+          text = await fs.readFile(this.file, "utf8").catch(() => null);
+          // fs reads only under the home folder: a file elsewhere (another drive) is copied in first.
+          if (text === null) {
+            const dir = `${appHome()}/${CACHE}/${this.id}`, dest = `${dir}/text`;
+            await fs.mkdir(dir, { recursive: true }).catch(() => {});
+            this.cached = true;
+            if (await copyHere(this.file, dest)) text = await fs.readFile(dest, "utf8").catch(() => null);
+          }
+        } else tooBig = size !== null;
+      }
     }
     if (text === null) {
       this.state = "error";
-      this.error = this.on ? "Can't read this file from the other machine (missing, or over 1 MiB)." : "Can't read this file: it's gone, too large, or not text.";
+      this.error = tooBig ? "This file is too large to show here (over 16 MB)."
+        : this.on ? "Can't read this file from the other machine (missing, or over 1 MiB)."
+        : "Can't read this file: it's gone, too large, or not text.";
       return;
     }
     if (text.includes("\0")) { this.state = "binary"; return; }
@@ -74,7 +91,8 @@ export class FileViewer {
 
   close() {
     this.code?.release?.();
-    if (this.rel) removeHere(`${appHome()}/${CACHE}/${this.id}`);
+    // A picture or a text file copied into the cache goes with the tab.
+    if (this.rel || this.cached) removeHere(`${appHome()}/${CACHE}/${this.id}`);
     forgetOpen(this.file, this.on);
   }
 
