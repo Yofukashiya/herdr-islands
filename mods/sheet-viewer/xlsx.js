@@ -10,7 +10,7 @@ import { unzipSync, strFromU8 } from "./fflate.js";
 import { parseXml, child, kids, path, all, textOf, val } from "./xml.js";
 import { resolveColor, DEFAULT_THEME, INDEXED, applyTint, mix } from "./colors.js";
 import { evaluate, colIndex } from "./formula.js";
-import { Cells, key, COLS } from "./cells.js";
+import { Cells, key, COLS, sharedText } from "./cells.js";
 
 export const EMU_PER_PX = 9525;
 const PT_PX = 96 / 72;
@@ -61,14 +61,22 @@ export function slicer(pause, ms = 90) {
   };
 }
 
-/** A source over zip bytes, for when the OS can not unzip (decompresses one part at a time). */
+/**
+ * A source over zip bytes, for when the OS can not unzip (decompresses one part at a time). A
+ * part read as text isn't kept: a sheet's bytes would double its size. close() lets it all go.
+ */
 export function zipSource(bytes) {
   const cache = new Map();
   const get = (p) => {
     if (!cache.has(p)) cache.set(p, unzipSync(bytes, { filter: (f) => f.name === p })[p] ?? null);
     return cache.get(p);
   };
-  return { text: async (p) => { const b = get(p); return b ? strFromU8(b) : null; }, exists: async (p) => !!get(p), bytes: async (p) => get(p) };
+  return {
+    text: async (p) => { const b = get(p); cache.delete(p); return b ? strFromU8(b) : null; },
+    exists: async (p) => !!get(p),
+    bytes: async (p) => get(p),
+    close: () => { cache.clear(); bytes = null; },
+  };
 }
 
 /**
@@ -227,6 +235,7 @@ export async function openXlsx(src, { pause = async () => {} } = {}) {
     loaded.clear();
     loading.clear();
     strings.length = 0;
+    src.close?.();
   };
   /** An already parsed sheet, or null. */
   wb.sheet = (i) => loaded.get(i) ?? null;
@@ -282,7 +291,7 @@ async function readSheet(wb, index, io) {
 
   const sheet = {
     name: meta.name, index,
-    cells: new Cells(wb.strings), // key -> { r, c, v, f, s, rich }, packed (cells.js)
+    cells: new Cells(wb.strings), // get(key) -> { r, c, v, f, s, rich }, kept packed (cells.js)
     maxRow: 0, maxCol: 0,
     colPx: [], colHidden: new Set(), colStyle: new Map(),
     rowPx: new Map(), rowHidden: new Set(), rowStyle: new Map(),
@@ -420,7 +429,7 @@ async function scanSheetData(src, from, to, sheet, wb, tick) {
         else v = Number(raw);
       } else if (t === "inlineStr") {
         const is = /<is>([\s\S]*?)<\/is>/.exec(body);
-        if (is) { const x = richOf(parseXml("<si>" + is[1] + "</si>"), () => null, null); v = typeof x === "string" ? x : x.text; }
+        if (is) v = sharedText(richOf(parseXml("<si>" + is[1] + "</si>"), () => null, null));
       }
       let f = null, fBase = null;
       if (fm) {
@@ -435,7 +444,7 @@ async function scanSheetData(src, from, to, sheet, wb, tick) {
       if (f) {
         // A formula keeps its object: computing a missing value writes into it.
         const x = si >= 0 ? wb.strings[si] : undefined;
-        if (si >= 0) v = x === undefined ? "" : typeof x === "string" ? x : x.text;
+        if (si >= 0) v = sharedText(x);
         const cell = { r, c: colIdx, s, v, f };
         if (x?.runs) cell.rich = x.runs;
         if (fBase) cell.fBase = fBase;
@@ -551,7 +560,7 @@ function lerpColor(a, b, k) { return mix(a, b, Math.max(0, Math.min(1, k))); }
  * hit cell k the way Excel does: an earlier (higher priority) rule wins each property, and a rule
  * with stopIfTrue hides the ones after it. A look handed out is shared: read it, don't change it.
  */
-export class Formats {
+class Formats {
   constructor() { this.rules = []; }
 
   /** A rule over `ranges` ({ r1, c1, r2, c2 }), after every rule added before it. `bars`: a data bar. */
@@ -816,7 +825,7 @@ function applyTable(sheet, t, wb) {
  * and a style object a cell was ~250 bytes in the mod runtime. A row's cells share one style, and
  * so do all banded rows alike: they are made once. A style handed out is shared: read it only.
  */
-export class Tables {
+class Tables {
   constructor() { this.list = []; this.styles = new Map(); }
 
   /** A table: its range { r1, c1, r2, c2 }, look (tableLook), headerRows, totals and stripes. */

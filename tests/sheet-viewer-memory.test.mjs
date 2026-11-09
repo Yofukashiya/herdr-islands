@@ -140,3 +140,10 @@ test("closing a workbook while its sheet is being read stops the read", async ()
     assert.equal(opened.sheet(0), null);
   } finally { Date.now = now; }
 });
+
+test("cells written out of order or twice are all there once, the later one winning", async () => {
+  const rows = `<row r="1"><c r="B1"><v>2</v></c><c r="A1"><v>1</v></c><c r="B1"><v>3</v></c></row><row r="2"><c r="A2"><v>4</v></c></row>`;
+  const sheet = await (await openXlsx(workbook(rows))).loadSheet(0);
+  assert.deepEqual([sheet.cells.size, [...sheet.cells.values()].map((c) => [c.r, c.c, c.v]).sort()],
+    [3, [[0, 0, 1], [0, 1, 3], [1, 0, 4]]]);
+});

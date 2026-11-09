@@ -22,7 +22,7 @@ const TEXT = 8;
 const VIEWS = 16384;
 
 /** A shared string's text: the workbook keeps a plain one as a string, a rich one as { text, runs }. */
-const textOf = (x) => (x === undefined || x === null ? "" : typeof x === "string" ? x : x.text);
+export const sharedText = (x) => (x === undefined || x === null ? "" : typeof x === "string" ? x : x.text);
 
 export class Cells {
   /** `strings`: the workbook's shared strings, for cells added with addShared. */
@@ -38,10 +38,11 @@ export class Cells {
     this.strs = [];
     this.objs = [];
     this.aside = null; // key -> object, for cells added out of order
+    this.shadowed = 0; // packed cells that a later one aside replaced
     this.views = new Map();
   }
 
-  get size() { return this.n + (this.aside?.size ?? 0); }
+  get size() { return this.n - this.shadowed + (this.aside?.size ?? 0); }
 
   /** A cell whose value is null, a number, a boolean or a string. `asText`: it shows String(v). */
   add(r, c, s, v, asText = false) {
@@ -60,7 +61,7 @@ export class Cells {
   addShared(r, c, s, si) {
     if (!this.inOrder(r, c)) {
       const x = this.strings[si];
-      return this.addCell(x?.runs ? { r, c, s, v: x.text, rich: x.runs } : { r, c, s, v: textOf(x) });
+      return this.addCell(x?.runs ? { r, c, s, v: x.text, rich: x.runs } : { r, c, s, v: sharedText(x) });
     }
     const i = this.slot(r, c);
     this.nums[i] = si;
@@ -69,7 +70,14 @@ export class Cells {
 
   /** A cell kept as its object ({ r, c, s, v, f, ... }): formulas, errors, anything unusual. */
   addCell(cell) {
-    if (!this.inOrder(cell.r, cell.c)) { (this.aside ??= new Map()).set(key(cell.r, cell.c), cell); return; }
+    if (!this.inOrder(cell.r, cell.c)) {
+      // Aside, it hides a packed cell written before it at the same place (a file that wrote it twice).
+      const k = key(cell.r, cell.c);
+      this.aside ??= new Map();
+      if (!this.aside.has(k) && this.find(k) >= 0) this.shadowed++;
+      this.aside.set(k, cell);
+      return;
+    }
     const i = this.slot(cell.r, cell.c);
     this.nums[i] = this.objs.length;
     this.objs.push(cell);
@@ -88,7 +96,7 @@ export class Cells {
     switch (m & 7) {
       case NUM: return n;
       case BOOL: return n !== 0;
-      case SHARED: return textOf(this.strings[n]);
+      case SHARED: return sharedText(this.strings[n]);
       case STR: return this.strs[n];
       case OBJ: return this.objs[n].v;
       default: return null;
@@ -139,6 +147,7 @@ export class Cells {
     let r = 0;
     for (let i = 0; i < this.n; i++) {
       while (this.rowStart[r + 1] <= i) r++;
+      if (this.shadowed && this.aside.has(key(r, this.cols[i]))) continue;
       yield (this.meta[i] & 7) === OBJ ? this.objs[this.nums[i]] : this.view(i, r, this.cols[i]);
     }
     if (this.aside) yield* this.aside.values();
@@ -149,7 +158,7 @@ export class Cells {
     this.cols = new Uint16Array(0); this.nums = new Float64Array(0); this.meta = new Int32Array(0);
     this.rowStart = new Int32Array(0);
     this.n = 0; this.lastRow = -1; this.lastCol = -1;
-    this.strs = []; this.objs = []; this.aside = null; this.views.clear();
+    this.strs = []; this.objs = []; this.aside = null; this.shadowed = 0; this.views.clear();
   }
 
   // ---- inside ----
@@ -159,7 +168,7 @@ export class Cells {
     switch (m & 7) {
       case NUM: return m & TEXT ? { r, c, s, v: n, text: String(n) } : { r, c, s, v: n };
       case BOOL: return m & TEXT ? { r, c, s, v: n !== 0, text: String(n !== 0) } : { r, c, s, v: n !== 0 };
-      case SHARED: { const x = this.strings[n]; return x?.runs ? { r, c, s, v: x.text, rich: x.runs } : { r, c, s, v: textOf(x) }; }
+      case SHARED: { const x = this.strings[n]; return x?.runs ? { r, c, s, v: x.text, rich: x.runs } : { r, c, s, v: sharedText(x) }; }
       case STR: return m & TEXT ? { r, c, s, v: this.strs[n], text: this.strs[n] } : { r, c, s, v: this.strs[n] };
       default: return { r, c, s, v: null };
     }

@@ -228,9 +228,15 @@ export default class Sheet extends View {
     sweepCache();
     cx.spawn(async (cx) => {
       // A real yield to the host: the runtime stops scripts that run ~0.5 s without one. A tab
-      // that closed meanwhile stops reading there; close() wakes a read waiting here, so it ends
-      // and lets go of what it read instead of being left in a cancelled task.
-      this.pause = () => (this.closed ? Promise.reject(new Error("closed")) : new Promise((resolve) => { this.wake = resolve; cx.timer.after(1, () => resolve()); }));
+      // that closed meanwhile stops reading there; close() wakes the reads waiting here (a sheet
+      // picked while another loads makes two), so they end and let go of what they read instead
+      // of being left in a cancelled task.
+      this.waiting = new Set();
+      this.pause = () => (this.closed ? Promise.reject(new Error("closed")) : new Promise((resolve) => {
+        const wake = () => { this.waiting.delete(wake); resolve(); };
+        this.waiting.add(wake);
+        cx.timer.after(1, wake);
+      }));
       const tick = slicer(this.pause);
       const stage = (name) => { this.stage = name; cx.notify(); };
       try {
@@ -270,7 +276,7 @@ export default class Sheet extends View {
   switchSheet(i, cx) {
     cx.spawn(async (cx2) => {
       try { await this.openSheet(i, cx2); }
-      catch (e) { if (this.tab === i) this.sheetError = String(e?.message ?? e); }
+      catch (e) { if (this.tab === i && !this.closed) this.sheetError = String(e?.message ?? e); }
       cx2.notify();
     });
   }
@@ -282,7 +288,7 @@ export default class Sheet extends View {
     this.sheetError = null;
     cx?.notify();
     const sh = await this.wb.loadSheet(i);
-    if (this.tab !== i) return; // another sheet was picked meanwhile: its own load sets the view up
+    if (this.tab !== i || this.closed) return; // another sheet was picked meanwhile: its own load sets the view up
     this.sh = sh;
     this.media = this.media ?? {};
     this.zoom = this.sh.view?.zoom ?? 1;
@@ -294,6 +300,7 @@ export default class Sheet extends View {
     for (const d of this.sh.drawings) {
       if (d.kind !== "image" || this.media[d.media]) continue;
       const rel = await mediaPath(this.wb.src, d.media, this.id);
+      if (this.closed) { if (rel?.startsWith(`${CACHE}/m-`)) removeCache(`${appHome()}/${rel}`); return; }
       this.media[d.media] = rel;
       // A picture written to the cache (not one in the unzipped folder) goes with the tab too.
       if (rel && rel.startsWith(`${CACHE}/m-`)) (this.cleanup ??= []).push(`${appHome()}/${rel}`);
@@ -308,9 +315,9 @@ export default class Sheet extends View {
    */
   async close() {
     this.closed = true;
-    this.wake?.();
+    for (const wake of this.waiting ?? []) wake();
     this.wb?.close?.();
-    this.sh = null;
+    this.wb = this.sh = this.sheetError = null;
     forgetCharts(this.id);
     for (const p of this.cleanup ?? []) removeCache(p);
     this.cleanup = [];
@@ -820,7 +827,7 @@ async function csvWorkbook(csv, file, tick) {
   let n = 0;
   for (const c of csv.cells.values()) {
     if ((++n & 1023) === 0) await tick(true);
-    if (c.r > 2000) continue;
+    if (c.r > 2000) break; // cells come row by row
     const longest = Math.max(...String(c.text).split("\n").map((l) => l.length));
     widest[c.c] = Math.max(widest[c.c] ?? 0, longest);
   }
