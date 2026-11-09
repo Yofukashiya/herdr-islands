@@ -58,3 +58,5 @@ The menu then has "Open in nvim", which runs it in a new tab.
 
 Install `sheet-viewer` too, for spreadsheets. Without it they open as text (CSV) or with a button
 to open them in their program (xlsx).
+
+`sidebar-chrome` sets the panel's opacity, as it does the other cards'.

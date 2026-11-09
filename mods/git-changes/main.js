@@ -1,6 +1,6 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, shared } from "herdr";
 
 // git-changes: the shipped Changes panel, cloned. Changed: it stays on its folder when a pane with no
 // folder of its own gets focus (a file opened from Files, any mod's tab). The shipped one fell back to
@@ -11,6 +11,13 @@ import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, setting
 // "\" is part of a name. By the path's shape, not the window's platform: a folder on another machine
 // is that machine's.
 const normPath = (s) => /^([A-Za-z]:|\\\\)/.test(s) ? s.replace(/\\/g, "/").replace(/^([a-z]):/, (_m, d) => d.toUpperCase() + ":") : s;
+
+// The islands' fill at the opacity in sidebar-chrome/settings.json (1 when unset).
+const islandFill = (c) => {
+  const o = shared("islands.opacity");
+  if (typeof o !== "number" || o >= 1 || !/^#[0-9a-f]{6}$/i.test(c)) return c;
+  return c + Math.round(Math.max(0, o) * 255).toString(16).padStart(2, "0");
+};
 
 /** The folder the panel shows: the focused terminal's. A pane with no folder of its own keeps
  *  `shown`, the folder already shown for this space. */
@@ -198,7 +205,7 @@ export default class Changes extends View {
     if (key(this.where) !== this.context) this.refresh(cx);
     const t = theme(), add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
     const enabled = Boolean(this.message.trim() && this.root && !this.busy && !this.loading);
-    return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
+    return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(islandFill(t.background)).border_1().border_color(t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
       })

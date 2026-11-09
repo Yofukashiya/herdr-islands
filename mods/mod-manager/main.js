@@ -24,6 +24,13 @@ const SELF = "mod-manager";
 const SYSTEM = new Set(["menu", "prompt", "confirm", "toast", "help", "picker", "peek", "new-menu", "machine-add", "worktree"]);
 const LAYOUT_LABEL = { main: "Herdr", terminals: "Terminals", win98: "Herdr 98", islands: "Islands" };
 
+// The islands' fill at the opacity in sidebar-chrome/settings.json (1 when unset).
+const islandFill = (c) => {
+  const o = shared("islands.opacity");
+  if (typeof o !== "number" || o >= 1 || !/^#[0-9a-f]{6}$/i.test(c)) return c;
+  return c + Math.round(Math.max(0, o) * 255).toString(16).padStart(2, "0");
+};
+
 // What each mod is, in a few words (mod.json's own title wins).
 const ABOUT = {
   "sidebar-chrome": "Brand row and footer; Islands look settings",
@@ -592,7 +599,7 @@ export default class Mods extends View {
   render(cx) {
     const t = theme();
     const body = this.view === "look" ? this.renderLook(t, cx) : this.view === "layouts" ? this.renderLayouts(t) : this.renderMods(t, cx);
-    return v_flex().id("mods").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    return v_flex().id("mods").size_full().min_h(0).rounded(10).overflow_hidden().bg(islandFill(t.background)).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(svg("mods/mod-manager/puzzle.svg").size(14).text_color(t.muted))
         .child(div().font_semibold().child("Mods"))

@@ -37,6 +37,9 @@ All notable changes to this project are listed here. The format follows
 
 ### Fixed
 
+- **Side panel (Files, Changes, Mods):** it follows the cards' `opacity` now, so the grid shows
+  through it as it does through the sidebar and the status bar. It was always solid
+  ([#10](https://github.com/Yofukashiya/herdr-islands/issues/10)).
 - **Files:** a change made while the panel refreshes now shows right after. It waited for the next
   10-second refresh.
 - **Changes:** opening a file no longer clears the panel (its list and the commit message you
