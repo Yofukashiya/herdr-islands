@@ -9,7 +9,7 @@ import * as fs from "fs/promises";
 import { openXlsx, zipSource, slicer, key, cellName, colName, colWidth, rowHeight, colX, rowY, BORDER_PX, parseRange } from "./xlsx.js";
 import { readCsvText, cp1251Async } from "./csv.js";
 import { formatValue, builtinFormat } from "./numfmt.js";
-import { drawChart } from "./draw.js";
+import { drawChart, forgetCharts } from "./draw.js";
 
 const MOD = "sheet-viewer";
 const PT = 96 / 72;
@@ -227,8 +227,10 @@ export default class Sheet extends View {
     this.id = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e8).toString(36)}`;
     sweepCache();
     cx.spawn(async (cx) => {
-      // A real yield to the host: the runtime stops scripts that run ~0.5 s without one.
-      this.pause = () => new Promise((resolve) => cx.timer.after(1, () => resolve()));
+      // A real yield to the host: the runtime stops scripts that run ~0.5 s without one. A tab
+      // that closed meanwhile stops reading there; close() wakes a read waiting here, so it ends
+      // and lets go of what it read instead of being left in a cancelled task.
+      this.pause = () => (this.closed ? Promise.reject(new Error("closed")) : new Promise((resolve) => { this.wake = resolve; cx.timer.after(1, () => resolve()); }));
       const tick = slicer(this.pause);
       const stage = (name) => { this.stage = name; cx.notify(); };
       try {
@@ -245,6 +247,7 @@ export default class Sheet extends View {
         stage(prep.kind === "csv" ? "Reading rows" : "Reading styles and strings");
         if (prep.kind === "csv") {
           const csv = await readCsvText(prep.text, { delimiter: e === "tsv" ? "\t" : undefined, encoding: prep.encoding, tick });
+          prep.text = null; // the cells hold what's needed of it
           this.wb = await csvWorkbook(csv, this.file, tick);
         } else {
           this.wb = await openXlsx(prep.src, { pause: this.pause });
@@ -254,6 +257,8 @@ export default class Sheet extends View {
         await this.openSheet(visible.includes(this.wb.activeTab) ? this.wb.activeTab : visible[0] ?? 0, cx);
         this.state = "ready";
       } catch (e) {
+        // Closed while reading: the cache made since close() goes too.
+        if (this.closed) { this.close(); return; }
         this.state = "error";
         this.error = String(e?.message ?? e);
       }
@@ -296,9 +301,19 @@ export default class Sheet extends View {
     cx?.notify();
   }
 
-  /** The cache this view made goes with it. */
+  /**
+   * The cache this view made goes with it, and so does its memory. Every mod's tabs share one
+   * heap of about 256 MiB, and the runtime frees a closed tab's sheets only if it collects
+   * cycles; once it has held a big sheet it may never again. Until then nothing else fits.
+   */
   async close() {
+    this.closed = true;
+    this.wake?.();
+    this.wb?.close?.();
+    this.sh = null;
+    forgetCharts(this.id);
     for (const p of this.cleanup ?? []) removeCache(p);
+    this.cleanup = [];
   }
 
   // ---- geometry ----
@@ -461,8 +476,8 @@ export default class Sheet extends View {
     let total = w, cc = c + dir, n = 0;
     while (cc >= 0 && cc < this.colsTotal() && n < 30) {
       const k = key(r, cc);
-      const nb = sh.cells.get(k);
-      if ((nb && nb.v !== null && nb.v !== undefined && nb.v !== "") || sh.mergeCovered.has(k) || sh.mergeAt.has(k)) break;
+      const v = sh.cells.value(k);
+      if ((v !== null && v !== "") || sh.mergeCovered.has(k) || sh.mergeAt.has(k)) break;
       total += colWidth(sh, cc);
       cc += dir; n++;
     }
@@ -619,10 +634,11 @@ export default class Sheet extends View {
       const rg = parseRange((m ? m[3] : part).replace(/\$/g, "").trim());
       if (!sh || !rg) continue;
       for (let r = rg.r1; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) {
-        const cell = sh.cells.get(key(r, c));
-        const xf = this.wb.xfs[cell?.s ?? 0] ?? this.wb.xfs[0];
+        // Values and styles are read where the sheet keeps them: a series can be 100,000 cells.
+        const k = key(r, c);
+        const xf = this.wb.xfs[sh.cells.style(k)] ?? this.wb.xfs[0];
         const fmt = xf.fmt ?? builtinFormat(xf.numFmtId, this.locale);
-        const v = cell?.v;
+        const v = sh.cells.value(k);
         if (v === null || v === undefined) { values.push(null); continue; }
         if (typeof v === "number" && formatCode === null) formatCode = fmt;
         if (isNum) values.push(v);
@@ -814,6 +830,7 @@ async function csvWorkbook(csv, file, tick) {
     sheets: [{ name: sheet.name, hidden: false }], activeTab: 0, date1904: false, theme: {},
     xfs: [{ numFmtId: 0, fmt: "General", font, fill: null, border: null, align: { h: "general", v: "bottom", wrap: false, indent: 0, rot: 0 } }],
     sheet: () => sheet, loadSheet: async () => sheet, sheetByName: () => null, src: {},
+    close: () => sheet.cells.clear(),
   };
 }
 

@@ -29,6 +29,9 @@ reviews:
           ~0.5 s without yielding to a macrotask is silently killed. Only `cx.timer.after(...)`
           yields; awaiting an already-resolved promise does not. Flag long synchronous loops over
           file data, and don't suggest replacing timer yields with `await Promise.resolve()`.
+        - Every mod runs in one heap of about 256 MiB. An object costs far more there than in V8 (a
+          cell as an object in a Map ~250 bytes), and a closed view's data held in a cycle may never
+          be collected: flag per-cell objects over big files, and big data a view's close() keeps.
         - There is no `TextDecoder`, `DecompressionStream` or Node `Buffer`; `atob` exists.
           `fs.readFile(path, "utf8")` is native and unlimited; `readTextFile` caps at 1 MiB.
         - The color literal "transparent" is rejected; "#00000000" is used on purpose.

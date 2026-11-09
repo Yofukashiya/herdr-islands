@@ -19,7 +19,7 @@ All notable changes to this project are listed here. The format follows
   - ignored files and folders are dimmed. Git lists an ignored folder once, so `node_modules` costs
     nothing.
 - **Tests:** `node --test` runs the tests in `tests/`. They cover Files (git marks, folder listings,
-  the tree) and `sheet-viewer` (formulas, conditional formats).
+  the tree) and `sheet-viewer` (formulas, conditional formats, the memory a big sheet keeps).
 
 ### Changed
 
@@ -38,6 +38,20 @@ All notable changes to this project are listed here. The format follows
 
 ### Fixed
 
+- **`sheet-viewer`, big sheets:** a sheet of hundreds of thousands of cells opens, and opens again,
+  instead of "out of memory in regexp execution"
+  ([#3](https://github.com/Yofukashiya/herdr-islands/issues/3)). Herdr runs every mod in one heap
+  of about 256 MiB, and 100,000 rows × 3 numbers with three conditional formats took about 200 MiB
+  of it. Now they take 9 MiB and open in about 7 seconds:
+  - cells are packed into typed arrays, ~30 bytes each instead of ~250;
+  - conditional formats are kept per rule, and Excel tables' styles are worked out per row when
+    drawn, instead of an object per cell;
+  - the sheet's XML is read where it lies, without a copy, and let go once it's read;
+  - a row height that LibreOffice writes for every row is kept only when it isn't the default;
+  - CSV files use the same packed cells;
+  - closing the tab empties its workbook at once. Herdr may never collect a closed tab's memory on
+    its own, so after one big sheet even the next small one could fail. A tab closed while it
+    reads stops reading and lets go of it too.
 - **`sheet-viewer`, formulas:** whole-column and whole-row references (`A:A`, `$B:$D`, `Sheet2!C:C`,
   `1:1`) are computed now. They showed as formula text in cells saved without a value, and a
   conditional format such as `=A1>AVERAGE(A:A)` never matched

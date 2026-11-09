@@ -262,9 +262,9 @@ Limits:
 - **Built-in table styles** are close approximations.
 - **Charts** have no trendlines, error bars or true 3D.
 - **Not drawn:** sparklines, slicers, form controls and SmartArt.
-- **Very large sheets** (hundreds of thousands of cells) open slowly and can run into the mod
-  runtime's memory limit; the viewer then says "out of memory" instead of showing the sheet
-  ([#3](https://github.com/Yofukashiya/herdr-islands/issues/3)).
+- **Very large sheets** open slowly: 300,000 cells with conditional formatting take about 7 s. A
+  sheet's XML is read whole, so one whose XML runs past ~100 MB (a few million cells) can still run
+  out of memory ([#30](https://github.com/Yofukashiya/herdr-islands/issues/30)).
 
 How it reads files. Herdr runs mod scripts in an interpreter about 50× slower than Node and silently
 stops a script that runs ~0.5 s without yielding. So the system unzips the workbook (.NET via

@@ -10,12 +10,13 @@ import { unzipSync, strFromU8 } from "./fflate.js";
 import { parseXml, child, kids, path, all, textOf, val } from "./xml.js";
 import { resolveColor, DEFAULT_THEME, INDEXED, applyTint, mix } from "./colors.js";
 import { evaluate, colIndex } from "./formula.js";
+import { Cells, key, COLS } from "./cells.js";
 
 export const EMU_PER_PX = 9525;
 const PT_PX = 96 / 72;
 const MDW = 7; // maximum digit width of Calibri 11 at 96 dpi, Excel's unit for column widths
 
-export const key = (r, c) => r * 16384 + c;
+export { key };
 export function colName(c) {
   let s = "";
   for (c += 1; c > 0; c = Math.floor((c - 1) / 26)) s = String.fromCharCode(65 + ((c - 1) % 26)) + s;
@@ -72,10 +73,12 @@ export function zipSource(bytes) {
 
 /**
  * src: { text(part) -> Promise<string|null>, exists(part) -> Promise<boolean> }
- * opts.pause: () => Promise, a real yield to the host (a timer), used between slices.
+ * opts.pause: () => Promise, a real yield to the host (a timer), used between slices. Once the
+ * workbook is closed, reading stops at its next pause.
  */
 export async function openXlsx(src, { pause = async () => {} } = {}) {
-  const tick = slicer(pause);
+  let closed = false;
+  const tick = slicer(() => (closed ? Promise.reject(new Error("closed")) : pause()));
   const text = (p) => src.text(p);
   const xml = async (p) => { const t = await text(p); return t ? parseXml(t) : null; };
   const relsOf = async (p) => {
@@ -186,7 +189,8 @@ export async function openXlsx(src, { pause = async () => {} } = {}) {
     while ((m = SI.exec(ssXml))) {
       const body = m[1] ?? "";
       const plain = body === "" ? ["", ""] : /^<t(?:\s[^>]*)?>([\s\S]*?)<\/t>$/.exec(body);
-      strings.push(plain ? { text: unesc(plain[1]) } : richOf(parseXml("<si>" + body + "</si>"), font, baseFont));
+      // A plain string is kept as itself: a sheet of 100,000 different names has as many entries.
+      strings.push(plain ? unesc(plain[1]) : richOf(parseXml("<si>" + body + "</si>"), font, baseFont));
       await tick();
     }
   }
@@ -201,12 +205,28 @@ export async function openXlsx(src, { pause = async () => {} } = {}) {
 
   const wb = { sheets, activeTab, date1904, theme, xfs, dxfs, strings, indexed, numFmts, src };
   const loaded = new Map(), loading = new Map();
-  const io = { xml, text, relsOf, color, fill, font, baseFont, tick };
+  // Sheets being read, and ones whose reading failed: the formulas' context holds a sheet in a
+  // cycle of closures, which the runtime may never collect, so close() empties these too.
+  const reading = new Set();
+  const io = { xml, text, relsOf, color, fill, font, baseFont, tick, reading };
   /** The sheet, parsing it the first time (a promise). */
   wb.loadSheet = (i) => {
     if (loaded.has(i)) return Promise.resolve(loaded.get(i));
-    if (!loading.has(i)) loading.set(i, readSheet(wb, i, io).then((sh) => { loaded.set(i, sh); return sh; }));
+    if (!loading.has(i)) loading.set(i, readSheet(wb, i, io).then((sh) => { reading.delete(sh); if (closed) emptySheet(sh); else loaded.set(i, sh); return sh; }));
     return loading.get(i);
+  };
+  /**
+   * Lets go of everything read, for a tab that closed. The runtime frees what a closed tab held
+   * only when it next collects cycles, and the next big workbook may not fit until then: the
+   * sheets are emptied now, even while something still holds them.
+   */
+  wb.close = () => {
+    closed = true;
+    for (const sh of [...loaded.values(), ...reading]) emptySheet(sh);
+    reading.clear();
+    loaded.clear();
+    loading.clear();
+    strings.length = 0;
   };
   /** An already parsed sheet, or null. */
   wb.sheet = (i) => loaded.get(i) ?? null;
@@ -218,22 +238,32 @@ export async function openXlsx(src, { pause = async () => {} } = {}) {
   return wb;
 }
 
+/** A string item: its text, or { text, runs } when it has runs in their own fonts. */
 function richOf(si, font, baseFont) {
   const runs = kids(si, "r");
-  if (!runs.length) return { text: textOf(child(si, "t")) };
+  if (!runs.length) return textOf(child(si, "t"));
   const out = runs.map((r) => ({ text: textOf(child(r, "t")), font: child(r, "rPr") ? { ...baseFont, ...stripNull(font(child(r, "rPr"))) } : null }));
   return { text: out.map((r) => r.text).join(""), runs: out };
 }
 function stripNull(o) { const out = {}; for (const k in o) if (o[k] !== null && o[k] !== undefined) out[k] = o[k]; return out; }
 
+/** A sheet with nothing in it any more: what wb.close() leaves of the sheets it read. */
+function emptySheet(sh) {
+  sh.cells.clear(); sh.cf.clear(); sh.table.clear();
+  for (const k of ["colHidden", "colStyle", "rowPx", "rowHidden", "rowStyle", "mergeAt", "mergeCovered", "comments", "hyperlinks"]) sh[k].clear();
+  sh.colPx = []; sh.merges = []; sh.drawings = []; sh.filters = [];
+  sh._colX = sh._rowY = null;
+}
+
 // ---- one sheet ---------------------------------------------------------------
 
 async function readSheet(wb, index, io) {
   const meta = wb.sheets[index];
-  const src = await io.text(meta.path);
+  let src = await io.text(meta.path);
   if (!src) throw new Error(`Sheet "${meta.name}" is missing from the file`);
-  // sheetData is scanned directly (it is most of the file); the rest goes through the XML tree.
-  let head = src, tail = "", data = "";
+  // sheetData is scanned where it lies (it is most of the file, and a copy would double it); the
+  // rest goes through the XML tree.
+  let head = src, tail = "", from = 0, to = 0;
   const a = src.indexOf("<sheetData");
   if (a >= 0) {
     const open = src.indexOf(">", a);
@@ -241,24 +271,27 @@ async function readSheet(wb, index, io) {
     if (src[open - 1] === "/") tail = src.slice(open + 1);
     else {
       const b = src.indexOf("</sheetData>", open);
-      data = src.slice(open + 1, b < 0 ? src.length : b);
+      from = open + 1;
+      to = b < 0 ? src.length : b;
       tail = b < 0 ? "" : src.slice(b + 12);
     }
   }
   const doc = parseXml(head + "<sheetData/>" + tail) ?? { children: [] };
+  head = tail = "";
   const rels = await io.relsOf(meta.path);
 
   const sheet = {
     name: meta.name, index,
-    cells: new Map(), // key -> { r, c, v, f, s, rich }
+    cells: new Cells(wb.strings), // key -> { r, c, v, f, s, rich }, packed (cells.js)
     maxRow: 0, maxCol: 0,
     colPx: [], colHidden: new Set(), colStyle: new Map(),
     rowPx: new Map(), rowHidden: new Set(), rowStyle: new Map(),
     merges: [], mergeAt: new Map(), mergeCovered: new Set(),
-    cf: new Map(), table: new Map(), comments: new Map(), hyperlinks: new Map(),
+    cf: new Formats(), table: new Tables(), comments: new Map(), hyperlinks: new Map(),
     drawings: [], filters: [],
     tabColor: io.color(path(doc, "sheetPr/tabColor")),
   };
+  io.reading.add(sheet);
 
   // View: gridlines, zoom, frozen panes.
   const view = path(doc, "sheetViews/sheetView");
@@ -293,7 +326,9 @@ async function readSheet(wb, index, io) {
     }
   }
 
-  await scanSheetData(data, sheet, wb, io.tick);
+  await scanSheetData(src, from, to, sheet, wb, io.tick);
+  // The runtime keeps a local's value until the function returns: let the sheet's text go now.
+  src = null;
 
   // Dimension may promise more than the data holds; keep the larger.
   const dimRef = child(doc, "dimension")?.attrs.ref;
@@ -341,15 +376,22 @@ const ATTR_RE = /([\w:]+)="([^"]*)"/g;
 function attrsOf(s) { const o = {}; let m; ATTR_RE.lastIndex = 0; while ((m = ATTR_RE.exec(s))) o[m[1]] = m[2]; return o; }
 const unesc = (s) => s.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-fA-F]+);/g, (m, e) => ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" }[e] ?? (e[1] === "x" ? String.fromCodePoint(parseInt(e.slice(2), 16)) : String.fromCodePoint(parseInt(e.slice(1), 10)))));
 
-async function scanSheetData(data, sheet, wb, tick) {
+/** The rows of `src` between `from` and `to` (the inside of sheetData) into the sheet's cells. */
+async function scanSheetData(src, from, to, sheet, wb, tick) {
   let m, rowIdx = -1;
   const shared = new Map(); // si -> { f, r, c }
-  ROW_RE.lastIndex = 0;
-  while ((m = ROW_RE.exec(data))) {
+  const cells = sheet.cells;
+  ROW_RE.lastIndex = from;
+  while ((m = ROW_RE.exec(src)) && m.index < to) {
     const ra = attrsOf(m[1]);
     rowIdx = ra.r ? Number(ra.r) - 1 : rowIdx + 1;
-    // Excel writes `ht` for rows it auto-fit too; both are the height it draws.
-    if (ra.ht) sheet.rowPx.set(rowIdx, Math.round(Number(ra.ht) * PT_PX));
+    // Excel writes `ht` for rows it auto-fit too; both are the height it draws. LibreOffice writes
+    // it for every row: a default height isn't kept (unless rows are hidden by default, where a
+    // row's own height is what shows it).
+    if (ra.ht) {
+      const px = Math.round(Number(ra.ht) * PT_PX);
+      if (px !== sheet.defaultRowPx || sheet.rowsHiddenByDefault) sheet.rowPx.set(rowIdx, px);
+    }
     if (ra.hidden === "1" || ra.hidden === "true") sheet.rowHidden.add(rowIdx);
     if (ra.s && (ra.customFormat === "1" || ra.customFormat === "true")) sheet.rowStyle.set(rowIdx, Number(ra.s));
     sheet.maxRow = Math.max(sheet.maxRow, rowIdx);
@@ -363,35 +405,46 @@ async function scanSheetData(data, sheet, wb, tick) {
       colIdx = ref ? colIndex(ref[1]) : colIdx + 1;
       const r = ref ? Number(ref[2]) - 1 : rowIdx;
       const body = cm[2] ?? "";
-      const cell = { r, c: colIdx, s: Number(ca.s ?? 0), v: null };
+      const s = Number(ca.s ?? 0);
       const vm = /<v>([\s\S]*?)<\/v>/.exec(body);
       const fm = /<f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/f>)/.exec(body);
       const t = ca.t ?? "n";
+      let v = null, si = -1;
       if (vm) {
         const raw = unesc(vm[1]);
-        if (t === "s") { const s = wb.strings[Number(raw)]; cell.v = s?.text ?? ""; if (s?.runs) cell.rich = s.runs; }
-        else if (t === "b") cell.v = raw === "1";
-        else if (t === "e") cell.v = { error: raw };
-        else if (t === "str") cell.v = raw;
-        else if (t === "d") { const d = Date.parse(raw); cell.v = Number.isFinite(d) ? d / 86400000 + 25569 : raw; }
-        else cell.v = Number(raw);
+        if (t === "s") si = Number(raw);
+        else if (t === "b") v = raw === "1";
+        else if (t === "e") v = { error: raw };
+        else if (t === "str") v = raw;
+        else if (t === "d") { const d = Date.parse(raw); v = Number.isFinite(d) ? d / 86400000 + 25569 : raw; }
+        else v = Number(raw);
       } else if (t === "inlineStr") {
         const is = /<is>([\s\S]*?)<\/is>/.exec(body);
-        if (is) { const si = parseXml("<si>" + is[1] + "</si>"); const rich = richOf(si, () => null, null); cell.v = rich.text; }
+        if (is) { const x = richOf(parseXml("<si>" + is[1] + "</si>"), () => null, null); v = typeof x === "string" ? x : x.text; }
       }
+      let f = null, fBase = null;
       if (fm) {
         const fa = attrsOf(fm[1]);
         const ftext = fm[2] ? unesc(fm[2]) : null;
         if (fa.t === "shared" && fa.si !== undefined) {
           if (ftext) shared.set(fa.si, { f: ftext, r, c: colIdx });
           const master = shared.get(fa.si);
-          if (master) { cell.f = master.f; cell.fBase = { r: master.r, c: master.c }; }
-        } else if (ftext) cell.f = ftext;
-        if (!vm) cell.missing = !!cell.f;
+          if (master) { f = master.f; fBase = { r: master.r, c: master.c }; }
+        } else if (ftext) f = ftext;
       }
-      if (cell.v === null && !cell.f && !cell.s) continue;
-      sheet.cells.set(key(r, colIdx), cell);
-      if (cell.v !== null || cell.f) { sheet.maxRow = Math.max(sheet.maxRow, r); sheet.maxCol = Math.max(sheet.maxCol, colIdx); }
+      if (f) {
+        // A formula keeps its object: computing a missing value writes into it.
+        const x = si >= 0 ? wb.strings[si] : undefined;
+        if (si >= 0) v = x === undefined ? "" : typeof x === "string" ? x : x.text;
+        const cell = { r, c: colIdx, s, v, f };
+        if (x?.runs) cell.rich = x.runs;
+        if (fBase) cell.fBase = fBase;
+        if (!vm) cell.missing = true;
+        cells.addCell(cell);
+      } else if (si >= 0) cells.addShared(r, colIdx, s, si);
+      else if (v !== null || s) cells.add(r, colIdx, s, v);
+      else continue;
+      if (v !== null || si >= 0 || f) { sheet.maxRow = Math.max(sheet.maxRow, r); sheet.maxCol = Math.max(sheet.maxCol, colIdx); }
     }
   }
 }
@@ -432,7 +485,10 @@ function formulaContext(sheet, wb) {
   const get = (r, c, sheetName) => {
     const sh = sheetName ? named(sheetName) : sheet;
     if (!sh) return { error: "#REF!" };
-    const cell = sh.cells.get(key(r, c));
+    // Only a formula saved without its value reads as null and still has one to compute.
+    const v0 = sh.cells.value(key(r, c));
+    if (v0 !== null) return v0;
+    const cell = sh.cells.object(key(r, c));
     if (!cell) return null;
     if (cell.missing && cell.f) {
       const k = sh.index + ":" + key(r, c);
@@ -445,7 +501,7 @@ function formulaContext(sheet, wb) {
     }
     return cell.v;
   };
-  const getIn = (sh, r, c) => { const cell = sh.cells.get(key(r, c)); return cell ? cell.v : null; };
+  const getIn = (sh, r, c) => sh.cells.value(key(r, c));
   return ctxOf(sheet);
 }
 
@@ -456,7 +512,7 @@ async function computeMissing(sheet, wb, tick) {
   // the column it reads values. A plain formula that reads such a total still pulls the column in
   // one go, as does a total over range formulas (#18).
   const later = [];
-  for (const cell of sheet.cells.values()) {
+  for (const cell of sheet.cells.objects()) {
     if (!cell.missing) continue;
     if (cell.f.includes(":")) later.push(cell);
     else { ctx.get(cell.r, cell.c); await tick(); }
@@ -465,15 +521,6 @@ async function computeMissing(sheet, wb, tick) {
 }
 
 // ---- conditional formatting ----------------------------------------------------
-
-function numericCells(sheet, ranges) {
-  const out = [];
-  for (const rg of ranges) for (let r = rg.r1; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) {
-    const v = sheet.cells.get(key(r, c))?.v;
-    if (typeof v === "number") out.push({ r, c, v });
-  }
-  return out;
-}
 
 /** A rule threshold from its cfvo. `stats` = { min, max, sorted() }: only percentiles need the
  *  values sorted, and sorted() does that once per rule. */
@@ -497,6 +544,73 @@ function threshold(cfvo, stats, get) {
 
 function lerpColor(a, b, k) { return mix(a, b, Math.max(0, Math.min(1, k))); }
 
+/**
+ * What conditional formatting gives the cells, kept per rule rather than per cell (an object a
+ * cell was ~250 bytes in the mod runtime): each of a rule's ranges has a typed array over its cells
+ * naming the look a cell got, 0 for none, and a data bar's lengths. get(k) layers the rules that
+ * hit cell k the way Excel does: an earlier (higher priority) rule wins each property, and a rule
+ * with stopIfTrue hides the ones after it. A look handed out is shared: read it, don't change it.
+ */
+export class Formats {
+  constructor() { this.rules = []; }
+
+  /** A rule over `ranges` ({ r1, c1, r2, c2 }), after every rule added before it. `bars`: a data bar. */
+  rule(ranges, { stop = false, bars = false } = {}) {
+    const rule = { stop, looks: [null], names: new Map(), ranges: ranges.map((rg) => ({ ...rg, w: rg.c2 - rg.c1 + 1, hits: null, pct: null })) };
+    this.rules.push(rule);
+    return {
+      /** The id of the look called `name`, made by make() the first time. A rule has few looks: a
+       *  color scale's colors lie on a line, at most ~1,500 of them. */
+      look: (name, make) => {
+        let id = rule.names.get(name);
+        if (id === undefined) { id = rule.looks.length; rule.looks.push(make()); rule.names.set(name, id); }
+        return id;
+      },
+      /** Cell (r, c) of range `ri` gets look `id`; `pct` is a data bar's length (0..1). */
+      mark: (ri, r, c, id, pct) => {
+        const rg = rule.ranges[ri];
+        if (!rg.hits) {
+          const n = (rg.r2 - rg.r1 + 1) * rg.w;
+          rg.hits = new Uint16Array(n);
+          if (bars) rg.pct = new Float64Array(n);
+        }
+        const i = (r - rg.r1) * rg.w + (c - rg.c1);
+        rg.hits[i] = id;
+        if (rg.pct) rg.pct[i] = pct;
+      },
+    };
+  }
+
+  /** The cell's formatting ({ fill, color, bold, bar, icon, hideValue, ... }), or undefined. */
+  get(k) {
+    const r = Math.floor(k / COLS), c = k - r * COLS;
+    let out, own = false;
+    for (const rule of this.rules) {
+      let look;
+      for (const rg of rule.ranges) {
+        if (!rg.hits || r < rg.r1 || r > rg.r2 || c < rg.c1 || c > rg.c2) continue;
+        const i = (r - rg.r1) * rg.w + (c - rg.c1);
+        if (!rg.hits[i]) continue;
+        look = rule.looks[rg.hits[i]];
+        if (rg.pct) look = { ...look, bar: { pct: rg.pct[i], color: look.bar.color } };
+        break;
+      }
+      if (!look) continue;
+      if (!out) out = look;
+      else {
+        if (!own) { out = { ...out }; own = true; }
+        for (const p in look) if (out[p] === undefined) out[p] = look[p];
+      }
+      if (rule.stop) break;
+    }
+    return out;
+  }
+
+  has(k) { return this.get(k) !== undefined; }
+
+  clear() { this.rules = []; }
+}
+
 async function applyConditionalFormats(sheet, doc, wb, tick) {
   const ctx = formulaContext(sheet, wb);
   const blocks = kids(doc, "conditionalFormatting");
@@ -510,15 +624,6 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
     for (const rule of kids(b, "cfRule")) rules.push({ ranges, rule, priority: Number(rule.attrs.priority ?? 999) });
   }
   rules.sort((a, b) => a.priority - b.priority);
-  const stopped = new Set();
-  const put = (r, c, patch) => {
-    const k = key(r, c);
-    if (stopped.has(k)) return;
-    const cur = sheet.cf.get(k) ?? {};
-    // Higher priority (earlier) rules win per property.
-    for (const p in patch) if (cur[p] === undefined) cur[p] = patch[p];
-    sheet.cf.set(k, cur);
-  };
   const style = (dxfId) => {
     const d = wb.dxfs[Number(dxfId)];
     if (!d) return {};
@@ -531,103 +636,101 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
     return out;
   };
   const evalAt = (formula, rg, r, c) => evaluate(formula, ctx, { r, c, baseR: rg.r1, baseC: rg.c1 });
+  let spin = 0;
   for (const { ranges, rule } of rules) {
     const type = rule.attrs.type;
-    const stop = rule.attrs.stopIfTrue === "1";
-    const cells = [];
-    // Ranges can cover a whole sheet (A:Z on 100 000 rows): every loop over them yields now and then.
-    let spin = 0;
-    for (const rg of ranges) for (let r = rg.r1; r <= rg.r2; r++) {
-      for (let c = rg.c1; c <= rg.c2; c++) cells.push({ rg, r, c, v: sheet.cells.get(key(r, c))?.v ?? null });
-      if ((++spin & 255) === 0) await tick(true);
-    }
-    // The numbers, their min and max in the same pass (yielding like the rest), and a sort only
-    // when a percentile or a rank needs it: a Float64Array sorts numerically inside the engine,
-    // without a JS comparator call per comparison.
-    const nums = [];
-    let numMin = Infinity, numMax = -Infinity;
-    for (const x of cells) {
-      if ((++spin & 1023) === 0) await tick(true);
-      if (typeof x.v !== "number") continue;
-      nums.push(x.v);
-      if (x.v < numMin) numMin = x.v;
-      if (x.v > numMax) numMax = x.v;
-    }
+    const layer = sheet.cf.rule(ranges, { stop: rule.attrs.stopIfTrue === "1", bars: type === "dataBar" });
+    // Every cell of the rule's ranges with its value, read where the sheet keeps it. Ranges can
+    // cover a whole sheet (A:Z on 100,000 rows): no list of their cells is made, and the walk yields.
+    const walk = async (visit) => {
+      for (let ri = 0; ri < ranges.length; ri++) {
+        const rg = ranges[ri];
+        for (let r = rg.r1; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) {
+          visit(sheet.cells.value(key(r, c)), rg, ri, r, c);
+          if ((++spin & 63) === 0) await tick(true);
+        }
+      }
+    };
+    // The numbers, their min and max in the same pass, and a sort only when a percentile or a rank
+    // needs it: a Float64Array sorts numerically inside the engine, without a JS comparator call.
+    let nums = new Float64Array(1024), count = 0, numMin = Infinity, numMax = -Infinity;
+    await walk((v) => {
+      if (typeof v !== "number") return;
+      if (count === nums.length) { const more = new Float64Array(count * 2); more.set(nums); nums = more; }
+      nums[count++] = v;
+      if (v < numMin) numMin = v;
+      if (v > numMax) numMax = v;
+    });
+    nums = nums.slice(0, count);
     let sortedOnce = null;
-    const stats = { min: numMin, max: numMax, sorted: () => (sortedOnce ??= Float64Array.from(nums).sort()) };
-    const hit = (x, patch) => { put(x.r, x.c, patch); if (stop) stopped.add(key(x.r, x.c)); };
+    const stats = { min: numMin, max: numMax, sorted: () => (sortedOnce ??= nums.slice().sort()) };
     await tick(true);
     if (type === "colorScale") {
       const cs = child(rule, "colorScale");
       const cfvos = kids(cs, "cfvo"), colors = kids(cs, "color").map((e) => resolveColor(e.attrs, wb.theme, wb.indexed));
-      if (!nums.length || colors.length < 2) continue;
+      if (!count || colors.length < 2) continue;
       const th = cfvos.map((v) => threshold(v, stats, (f) => evaluate(f, ctx)));
-      for (const x of cells) {
-        if ((++spin & 1023) === 0) await tick(true);
-        if (typeof x.v !== "number") continue;
+      await walk((v, rg, ri, r, c) => {
+        if (typeof v !== "number") return;
         let col;
-        if (colors.length === 2) col = lerpColor(colors[0], colors[1], th[1] === th[0] ? 1 : (x.v - th[0]) / (th[1] - th[0]));
-        else col = x.v <= th[1] ? lerpColor(colors[0], colors[1], th[1] === th[0] ? 1 : (x.v - th[0]) / (th[1] - th[0])) : lerpColor(colors[1], colors[2], th[2] === th[1] ? 1 : (x.v - th[1]) / (th[2] - th[1]));
-        hit(x, { fill: col });
-      }
+        if (colors.length === 2) col = lerpColor(colors[0], colors[1], th[1] === th[0] ? 1 : (v - th[0]) / (th[1] - th[0]));
+        else col = v <= th[1] ? lerpColor(colors[0], colors[1], th[1] === th[0] ? 1 : (v - th[0]) / (th[1] - th[0])) : lerpColor(colors[1], colors[2], th[2] === th[1] ? 1 : (v - th[1]) / (th[2] - th[1]));
+        layer.mark(ri, r, c, layer.look(col, () => ({ fill: col })));
+      });
     } else if (type === "dataBar") {
       const db = child(rule, "dataBar");
       const cfvos = kids(db, "cfvo");
       const col = resolveColor(child(db, "color")?.attrs, wb.theme, wb.indexed) ?? "#638ec6";
-      if (!nums.length) continue;
+      if (!count) continue;
       const lo = threshold(cfvos[0], stats, (f) => evaluate(f, ctx)), hi = threshold(cfvos[1], stats, (f) => evaluate(f, ctx));
       const minLen = Number(db.attrs.minLength ?? 10) / 100, maxLen = Number(db.attrs.maxLength ?? 90) / 100;
-      const showValue = db.attrs.showValue !== "0";
-      for (const x of cells) {
-        if ((++spin & 1023) === 0) await tick(true);
-        if (typeof x.v !== "number") continue;
-        const k = hi === lo ? 1 : Math.max(0, Math.min(1, (x.v - lo) / (hi - lo)));
-        hit(x, { bar: { pct: minLen + (maxLen - minLen) * k, color: col }, hideValue: !showValue });
-      }
+      const bar = layer.look("bar", () => ({ bar: { color: col }, hideValue: db.attrs.showValue === "0" }));
+      await walk((v, rg, ri, r, c) => {
+        if (typeof v !== "number") return;
+        const k = hi === lo ? 1 : Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+        layer.mark(ri, r, c, bar, minLen + (maxLen - minLen) * k);
+      });
     } else if (type === "iconSet") {
       const is = child(rule, "iconSet");
       const cfvos = kids(is, "cfvo");
       const set = is?.attrs.iconSet ?? "3TrafficLights1";
       const reverse = is?.attrs.reverse === "1";
-      if (!nums.length) continue;
+      if (!count) continue;
       const th = cfvos.map((v) => threshold(v, stats, (f) => evaluate(f, ctx)));
       const n = th.length;
-      for (const x of cells) {
-        if ((++spin & 1023) === 0) await tick(true);
-        if (typeof x.v !== "number") continue;
+      await walk((v, rg, ri, r, c) => {
+        if (typeof v !== "number") return;
         let level = 0;
-        for (let i = 1; i < n; i++) if (x.v >= th[i]) level = i;
+        for (let i = 1; i < n; i++) if (v >= th[i]) level = i;
         if (reverse) level = n - 1 - level;
-        hit(x, { icon: { set, level, of: n }, hideValue: is?.attrs.showValue === "0" });
-      }
+        layer.mark(ri, r, c, layer.look(level, () => ({ icon: { set, level, of: n }, hideValue: is?.attrs.showValue === "0" })));
+      });
     } else {
-      const d = style(rule.attrs.dxfId);
+      const look = layer.look("style", () => style(rule.attrs.dxfId));
       const fs = kids(rule, "formula").map(textOf);
       // What rank, average and duplicate rules compare against, worked out once per rule: per cell
       // it was O(n²), minutes for a duplicates rule on a few thousand rows in this interpreter.
       let edge = null, avg = 0, sd = 0;
       const counts = new Map();
-      if (type === "top10" && nums.length) {
+      if (type === "top10" && count) {
         const rank = Number(rule.attrs.rank ?? 10), pct = rule.attrs.percent === "1", bottom = rule.attrs.bottom === "1";
         const asc = stats.sorted(), n = Math.min(pct ? Math.max(1, Math.floor((asc.length * rank) / 100)) : rank, asc.length);
         // The n-th largest (top) or n-th smallest (bottom) value.
         edge = n > 0 ? (bottom ? asc[n - 1] : asc[asc.length - n]) : null;
-      } else if (type === "aboveAverage" && nums.length) {
-        avg = nums.reduce((s, q) => s + q, 0) / nums.length;
-        sd = rule.attrs.stdDev ? Math.sqrt(nums.reduce((s, q) => s + (q - avg) ** 2, 0) / nums.length) * Number(rule.attrs.stdDev) : 0;
+      } else if (type === "aboveAverage" && count) {
+        avg = nums.reduce((s, q) => s + q, 0) / count;
+        sd = rule.attrs.stdDev ? Math.sqrt(nums.reduce((s, q) => s + (q - avg) ** 2, 0) / count) * Number(rule.attrs.stdDev) : 0;
       } else if (type === "duplicateValues" || type === "uniqueValues") {
-        for (const y of cells) {
-          if ((++spin & 1023) === 0) await tick(true);
-          if (y.v === null) continue;
-          const k = String(y.v).toLowerCase();
+        await walk((v) => {
+          if (v === null) return;
+          const k = String(v).toLowerCase();
           counts.set(k, (counts.get(k) ?? 0) + 1);
-        }
+        });
       }
-      for (const x of cells) {
+      await walk((v, rg, ri, r, c) => {
         let ok = false;
-        const v = x.v;
         if (type === "cellIs") {
-          const a = evalAt(fs[0] ?? "", x.rg, x.r, x.c), b = fs[1] !== undefined ? evalAt(fs[1], x.rg, x.r, x.c) : undefined;
+          const a = evalAt(fs[0] ?? "", rg, r, c), b = fs[1] !== undefined ? evalAt(fs[1], rg, r, c) : undefined;
           const op = rule.attrs.operator;
           if (v === null || v === undefined || v === "") { ok = false; }
           else {
@@ -642,7 +745,7 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
             else if (op === "notBetween") ok = !(cmp(v, Math.min(a, b)) >= 0 && cmp(v, Math.max(a, b)) <= 0);
           }
         } else if (type === "expression") {
-          const res = evalAt(fs[0] ?? "", x.rg, x.r, x.c);
+          const res = evalAt(fs[0] ?? "", rg, r, c);
           ok = res === true || (typeof res === "number" && res !== 0);
         } else if (type === "containsText" || type === "notContainsText" || type === "beginsWith" || type === "endsWith") {
           const needle = String(rule.attrs.text ?? "").toLowerCase(), s = String(v ?? "").toLowerCase();
@@ -655,18 +758,17 @@ async function applyConditionalFormats(sheet, doc, wb, tick) {
           const bottom = rule.attrs.bottom === "1";
           ok = typeof v === "number" && edge !== null && (bottom ? v <= edge : v >= edge);
         } else if (type === "aboveAverage") {
-          if (typeof v !== "number" || !nums.length) ok = false;
+          if (typeof v !== "number" || !count) ok = false;
           else {
             const above = rule.attrs.aboveAverage !== "0", eq = rule.attrs.equalAverage === "1";
             ok = above ? (eq ? v >= avg + sd : v > avg + sd) : (eq ? v <= avg - sd : v < avg - sd);
           }
         } else if (type === "duplicateValues" || type === "uniqueValues") {
-          const count = v === null ? 0 : counts.get(String(v).toLowerCase()) ?? 0;
-          ok = v !== null && v !== "" && (type === "duplicateValues" ? count > 1 : count === 1);
+          const n = v === null ? 0 : counts.get(String(v).toLowerCase()) ?? 0;
+          ok = v !== null && v !== "" && (type === "duplicateValues" ? n > 1 : n === 1);
         } else if (type === "timePeriod") ok = false;
-        if (ok) hit(x, d);
-        await tick();
-      }
+        if (ok) layer.mark(ri, r, c, look);
+      });
     }
   }
 }
@@ -704,35 +806,63 @@ function applyTable(sheet, t, wb) {
   const info = child(t, "tableStyleInfo")?.attrs ?? {};
   const look = tableLook(info.name ?? "TableStyleMedium2", wb.theme);
   const headerRows = Number(t.attrs.headerRowCount ?? 1);
-  const totals = Number(t.attrs.totalsRowCount ?? 0);
-  const stripes = info.showRowStripes !== "0";
   if (headerRows && child(t, "autoFilter")) sheet.filters.push({ r: rg.r1, c1: rg.c1, c2: rg.c2 });
   if (!look) return;
-  for (let r = rg.r1; r <= rg.r2; r++) {
-    const isHeader = r < rg.r1 + headerRows;
-    const isTotal = totals && r > rg.r2 - totals;
-    const bodyIdx = r - rg.r1 - headerRows;
-    for (let c = rg.c1; c <= rg.c2; c++) {
-      const s = {};
-      if (isHeader) {
-        if (look.header.fill) s.fill = look.header.fill;
-        if (look.header.color) s.color = look.header.color;
-        if (look.header.bold) s.bold = true;
-        if (look.header.borderB) s.border = { b: { style: "thin", color: look.header.borderB } };
-      } else if (isTotal) {
-        s.bold = true;
-        s.border = { t: { style: "double", color: look.edges ?? look.inner ?? "#000000" } };
-      } else {
-        if (stripes && bodyIdx % 2 === 0 && look.band) s.fill = look.band;
-        else if (stripes && look.band2) s.fill = look.band2;
-        if (look.text) s.color = look.text;
-        if (look.grid) s.border = { l: { style: "thin", color: look.grid }, r: { style: "thin", color: look.grid }, t: { style: "thin", color: look.grid }, b: { style: "thin", color: look.grid } };
-        else if (look.inner) s.border = { t: { style: "thin", color: look.inner } };
-      }
-      if (look.edges && (r === rg.r2)) s.border = { ...(s.border ?? {}), b: { style: "thin", color: look.edges } };
-      sheet.table.set(key(r, c), s);
+  sheet.table.add({ ...rg, look, headerRows, totals: Number(t.attrs.totalsRowCount ?? 0), stripes: info.showRowStripes !== "0" });
+}
+
+/**
+ * Excel tables' styles, worked out for a cell when it is drawn: a table can be 100,000 rows long,
+ * and a style object a cell was ~250 bytes in the mod runtime. A row's cells share one style, and
+ * so do all banded rows alike: they are made once. A style handed out is shared: read it only.
+ */
+export class Tables {
+  constructor() { this.list = []; this.styles = new Map(); }
+
+  /** A table: its range { r1, c1, r2, c2 }, look (tableLook), headerRows, totals and stripes. */
+  add(t) { this.list.push(t); }
+
+  /** The table style of cell k ({ fill, color, bold, border }), or undefined outside every table. */
+  get(k) {
+    const r = Math.floor(k / COLS), c = k - r * COLS;
+    // Tables don't overlap in Excel; when a file's do, the later one wins, as before.
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const t = this.list[i];
+      if (r < t.r1 || r > t.r2 || c < t.c1 || c > t.c2) continue;
+      const part = r < t.r1 + t.headerRows ? "header" : t.totals && r > t.r2 - t.totals ? "total" : (r - t.r1 - t.headerRows) % 2 === 0 ? "band" : "band2";
+      const name = `${i}:${part}:${r === t.r2}`;
+      let s = this.styles.get(name);
+      if (!s) { s = tableStyle(t, part, r === t.r2); this.styles.set(name, s); }
+      return s;
     }
+    return undefined;
   }
+
+  has(k) { return this.get(k) !== undefined; }
+
+  clear() { this.list = []; this.styles.clear(); }
+}
+
+/** A table cell's style: `part` is "header", "total", "band" (the 1st, 3rd, ... body row) or "band2"; `last`: the table's last row. */
+function tableStyle({ look, stripes }, part, last) {
+  const s = {};
+  if (part === "header") {
+    if (look.header.fill) s.fill = look.header.fill;
+    if (look.header.color) s.color = look.header.color;
+    if (look.header.bold) s.bold = true;
+    if (look.header.borderB) s.border = { b: { style: "thin", color: look.header.borderB } };
+  } else if (part === "total") {
+    s.bold = true;
+    s.border = { t: { style: "double", color: look.edges ?? look.inner ?? "#000000" } };
+  } else {
+    if (stripes && part === "band" && look.band) s.fill = look.band;
+    else if (stripes && look.band2) s.fill = look.band2;
+    if (look.text) s.color = look.text;
+    if (look.grid) s.border = { l: { style: "thin", color: look.grid }, r: { style: "thin", color: look.grid }, t: { style: "thin", color: look.grid }, b: { style: "thin", color: look.grid } };
+    else if (look.inner) s.border = { t: { style: "thin", color: look.inner } };
+  }
+  if (look.edges && last) s.border = { ...(s.border ?? {}), b: { style: "thin", color: look.edges } };
+  return s;
 }
 
 function readComments(sheet, doc) {

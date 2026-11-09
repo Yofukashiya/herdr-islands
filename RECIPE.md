@@ -189,6 +189,10 @@ formatting, tables, charts, pictures and comments, with sheet tabs at the bottom
 - **Script time:** Herdr runs mods in an interpreter about 50× slower than V8 and silently kills a
   script that runs ~0.5 s without yielding. Only `cx.timer.after` yields; `await Promise.resolve()`
   does not. Anything that walks file data (the spreadsheet viewer) must slice its work.
+- **Memory:** every mod runs in one heap of about 256 MiB; an allocation past it fails with "out of
+  memory". A closed view's data held in a cycle (closures that reach each other) may never be
+  collected, so `close()` must let big data go itself. A cell as an object in a Map costs ~250 bytes
+  there: the spreadsheet viewer packs cells into typed arrays.
 - **Missing APIs:** there's no `TextDecoder`, `DecompressionStream` or `Buffer`. `readTextFile` stops at
   1 MiB; `fs.readFile(path, "utf8")` has no limit.
 - **Colors:** `"transparent"` is rejected as a color; use `#00000000`.
