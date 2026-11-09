@@ -153,6 +153,10 @@ formatting, tables, charts, pictures and comments, with sheet tabs at the bottom
       `file://` and `vscode://file/…` and `cx.write_to_clipboard`.
 
     Spreadsheets go to `tab.new {mod: "sheet-viewer"}` when that mod is installed.
+
+    **Listing:** a process start costs most of a listing (`powershell` ~0.2 s, a folder ~1 ms), so
+    `listing.js` lists many folders per `powershell` or `sh`. `tree.js` decides what to list: the
+    folders in view, one level ahead of what's open, so a click on one draws its rows at once.
   - `git-changes` (`changes`): a clone of `changes`. Like `file-browser`, it follows the focused pane's
     folder, and a pane without one (a mod's tab) keeps the folder already shown. Herdr's own `files` and
     `changes` fall back to the space's folder there, spelled `D:/repo` against the terminal's `D:\repo`,

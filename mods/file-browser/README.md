@@ -19,6 +19,8 @@ Herdr's Files panel (the shipped `files` mod, cloned), made to open files rather
   letter after it: `M` modified (amber), `A` added and `U` untracked (green), `D` deleted and `!` in
   conflict (red). A folder with changes inside gets the same color and a dot, even when it's
   collapsed. Ignored files and folders are dimmed.
+- **Folders open at once:** the folders you can see are listed before you click them, many in one
+  process.
 
 ## Install only this mod
 
