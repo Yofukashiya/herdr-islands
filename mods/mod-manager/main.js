@@ -11,7 +11,7 @@
 // layouts only take hide/show (they are read-only otherwise).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { theme, layout, layouts, shared, run, exec, appHome, readTextFile, writeTextFile, watchFolder, settings, window as hwin, home, notify } from "herdr";
+import { theme, layout, layouts, shared, props, run, exec, appHome, readTextFile, writeTextFile, watchFolder, settings, window as hwin, home, notify } from "herdr";
 import * as fs from "fs/promises";
 import { installedVersion, availableRelease, startUpdate, pendingResult } from "./update.js";
 
@@ -23,6 +23,13 @@ const SELF = "mod-manager";
 // Herdr's infrastructure: dialogs, menus and popups other mods open. Listed, never switched off.
 const SYSTEM = new Set(["menu", "prompt", "confirm", "toast", "help", "picker", "peek", "new-menu", "machine-add", "worktree"]);
 const LAYOUT_LABEL = { main: "Herdr", terminals: "Terminals", win98: "Herdr 98", islands: "Islands" };
+
+// The islands' fill at the opacity in sidebar-chrome/settings.json (1 when unset).
+const islandFill = (c) => {
+  const o = shared("islands.opacity");
+  if (typeof o !== "number" || o >= 1 || !/^#[0-9a-f]{6}$/i.test(c)) return c;
+  return c + Math.round(Math.max(0, o) * 255).toString(16).padStart(2, "0");
+};
 
 // What each mod is, in a few words (mod.json's own title wins).
 const ABOUT = {
@@ -67,6 +74,11 @@ function walk(node, fn, parent = null, area = null) {
   for (const c of node.children ?? []) walk(c, fn, node, here);
 }
 function findId(node, id) { let hit = null; walk(node, (n) => { if (n.id === id) hit = n; }); return hit; }
+
+// The panel's fill: the islands' one only in the Islands layout (its brand is sidebar-chrome),
+// because the setting outlives a switch to another layout. As a dialog (mod.open, and the update
+// notice's button) it stays solid over the text.
+const panelFill = (c) => !props()?.overlay && findId(layout(), "brand")?.content?.mod === "sidebar-chrome" ? islandFill(c) : c;
 
 /** Where a layout uses mod `name`: [{ kind, id, area, hidden?, parent? }]. */
 function usage(root, name) {
@@ -592,7 +604,7 @@ export default class Mods extends View {
   render(cx) {
     const t = theme();
     const body = this.view === "look" ? this.renderLook(t, cx) : this.view === "layouts" ? this.renderLayouts(t) : this.renderMods(t, cx);
-    return v_flex().id("mods").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    return v_flex().id("mods").size_full().min_h(0).rounded(10).overflow_hidden().bg(panelFill(t.background)).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(svg("mods/mod-manager/puzzle.svg").size(14).text_color(t.muted))
         .child(div().font_semibold().child("Mods"))

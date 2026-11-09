@@ -40,6 +40,6 @@ copies the grid backdrop to `backgrounds/islands-grid.png`, which the default se
 ## Works with
 
 The other mods read what it publishes: card opacity (`space-list`, `agent-list`, `tab-bar`,
-`status-bar`), pane opacity (`pane-header`), the accent mode (`space-list`) and whether the radar shows
-(`agent-radar`). Without it they use full opacity, the space color and a visible radar.
+`status-bar`, and the side panel's `file-browser`, `git-changes` and `mod-manager`), pane opacity
+(`pane-header`), the accent mode (`space-list`) and whether the radar shows (`agent-radar`). Without it they use full opacity, the space color and a visible radar.
 `mod-manager`'s Look tab edits its settings.

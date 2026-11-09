@@ -188,7 +188,8 @@ apply immediately:
 { "opacity": 0.8, "main_opacity": 0.75, "backdrop": "backgrounds/islands-grid.png", "radar": true, "accent": "space" }
 ```
 
-- `opacity`: opacity of the side cards and the status bar (1 hides the grid behind them).
+- `opacity`: opacity of the cards: the sidebar, the tab bar, the side panel (Files, Changes, Mods) and
+  the status bar (1 hides the grid behind them).
 - `main_opacity`: opacity of the terminal panes.
 - `backdrop`: `"grid"` or an image path, `"gradient"` (native, from theme colors), or `"plain"`.
 - `radar`: `false` hides the agent radar.

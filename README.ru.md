@@ -196,7 +196,8 @@ curl -fsSL https://raw.githubusercontent.com/Yofukashiya/herdr-islands/main/inst
 { "opacity": 0.8, "main_opacity": 0.75, "backdrop": "backgrounds/islands-grid.png", "radar": true, "accent": "space" }
 ```
 
-- `opacity`: непрозрачность боковых карточек и статус-бара (1 — без просвета сетки).
+- `opacity`: непрозрачность карточек: боковой панели слева, полосы вкладок, правой панели (Files,
+  Changes, Mods) и статус-бара (1 — без просвета сетки).
 - `main_opacity`: непрозрачность панелей с терминалами.
 - `backdrop`: `"grid"` или путь к картинке, `"gradient"` (нативный, из цветов темы) или `"plain"`.
 - `radar`: `false` прячет выдвижную панель агентов.

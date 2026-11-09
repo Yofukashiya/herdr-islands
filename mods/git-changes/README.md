@@ -39,4 +39,4 @@ Use it where your layout has Herdr's `changes`:
 ## Works with
 
 The Changes button in `tab-bar` (and in Herdr's own `tabs`) opens the block with the id `changes`, so
-keep that id.
+keep that id. `sidebar-chrome` sets the panel's opacity, as it does the other cards'.
