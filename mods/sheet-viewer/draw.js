@@ -13,6 +13,12 @@ function pathEl(build, color) {
   return div().absolute().left(0).top(0).size_full().child(w.paint_path(build, color));
 }
 
+/** Drops the charts a closed view drew: their keys start with its id. */
+export function forgetCharts(id) {
+  for (const k of models.keys()) if (k.startsWith(id + "|")) models.delete(k);
+  for (const k of frames.keys()) if (k.startsWith(id + "|")) frames.delete(k);
+}
+
 export function drawChart(xml, ctx) {
   let model = models.get(ctx.key);
   if (model === undefined) {

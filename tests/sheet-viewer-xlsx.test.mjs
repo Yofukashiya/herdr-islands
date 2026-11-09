@@ -4,24 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openXlsx, key } from "../mods/sheet-viewer/xlsx.js";
-
-const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
-const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-
-/** A one-sheet workbook as openXlsx reads it, from the sheet's sheetData and what follows it. */
-function workbook(sheetData, after = "") {
-  const parts = {
-    "xl/workbook.xml": `<workbook ${NS}><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>`,
-    "xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
-      + `<Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/>`
-      + `<Relationship Id="rId2" Type="${REL}/styles" Target="styles.xml"/></Relationships>`,
-    "xl/styles.xml": `<styleSheet ${NS}><dxfs count="1"><dxf><fill><patternFill><bgColor rgb="FFFFC7CE"/></patternFill></fill></dxf></dxfs></styleSheet>`,
-    "xl/worksheets/sheet1.xml": `<worksheet ${NS}><sheetData>${sheetData}</sheetData>${after}</worksheet>`,
-  };
-  return { text: async (p) => parts[p] ?? null, exists: async (p) => p in parts };
-}
-
-const column = (...values) => values.map((v, i) => `<row r="${i + 1}"><c r="A${i + 1}"><v>${v}</v></c></row>`).join("");
+import { workbook, column } from "./sheet-viewer-book.mjs";
 
 test("a cell saved without its value, as openpyxl writes =SUM(A:A), shows the column's sum", async () => {
   const wb = await openXlsx(workbook(column(1, 2, 9) + `<row r="4"><c r="B4"><f>SUM(A:A)</f></c></row>`));
@@ -44,7 +27,7 @@ test("a rule over a whole row (sqref 2:2) colors that row's cells", async () => 
     + `<formula>4</formula></cfRule></conditionalFormatting>`;
   const wb = await openXlsx(workbook(rows, rule));
   const sheet = await wb.loadSheet(0);
-  const filled = [...sheet.cf].filter(([, s]) => s.fill).map(([k]) => k).sort((a, b) => a - b);
+  const filled = [0, 1].flatMap((r) => [0, 1, 2, 3].filter((c) => sheet.cf.get(key(r, c))?.fill).map((c) => key(r, c)));
   assert.deepEqual(filled, [key(1, 0), key(1, 2)]);
 });
 

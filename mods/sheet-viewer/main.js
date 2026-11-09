@@ -9,7 +9,7 @@ import * as fs from "fs/promises";
 import { openXlsx, zipSource, slicer, key, cellName, colName, colWidth, rowHeight, colX, rowY, BORDER_PX, parseRange } from "./xlsx.js";
 import { readCsvText, cp1251Async } from "./csv.js";
 import { formatValue, builtinFormat } from "./numfmt.js";
-import { drawChart } from "./draw.js";
+import { drawChart, forgetCharts } from "./draw.js";
 
 const MOD = "sheet-viewer";
 const PT = 96 / 72;
@@ -227,8 +227,16 @@ export default class Sheet extends View {
     this.id = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e8).toString(36)}`;
     sweepCache();
     cx.spawn(async (cx) => {
-      // A real yield to the host: the runtime stops scripts that run ~0.5 s without one.
-      this.pause = () => new Promise((resolve) => cx.timer.after(1, () => resolve()));
+      // A real yield to the host: the runtime stops scripts that run ~0.5 s without one. A tab
+      // that closed meanwhile stops reading there; close() wakes the reads waiting here (a sheet
+      // picked while another loads makes two), so they end and let go of what they read instead
+      // of being left in a cancelled task.
+      this.waiting = new Set();
+      this.pause = () => (this.closed ? Promise.reject(new Error("closed")) : new Promise((resolve) => {
+        const wake = () => { this.waiting.delete(wake); resolve(); };
+        this.waiting.add(wake);
+        cx.timer.after(1, wake);
+      }));
       const tick = slicer(this.pause);
       const stage = (name) => { this.stage = name; cx.notify(); };
       try {
@@ -245,6 +253,7 @@ export default class Sheet extends View {
         stage(prep.kind === "csv" ? "Reading rows" : "Reading styles and strings");
         if (prep.kind === "csv") {
           const csv = await readCsvText(prep.text, { delimiter: e === "tsv" ? "\t" : undefined, encoding: prep.encoding, tick });
+          prep.text = null; // the cells hold what's needed of it
           this.wb = await csvWorkbook(csv, this.file, tick);
         } else {
           this.wb = await openXlsx(prep.src, { pause: this.pause });
@@ -252,8 +261,12 @@ export default class Sheet extends View {
         const visible = this.wb.sheets.map((s, i) => (s.hidden ? -1 : i)).filter((i) => i >= 0);
         stage("Reading the sheet");
         await this.openSheet(visible.includes(this.wb.activeTab) ? this.wb.activeTab : visible[0] ?? 0, cx);
+        // Closed while a small workbook read without a pause to stop it: what it made goes now.
+        if (this.closed) { this.close(); return; }
         this.state = "ready";
       } catch (e) {
+        // Closed while reading: the cache made since close() goes too.
+        if (this.closed) { this.close(); return; }
         this.state = "error";
         this.error = String(e?.message ?? e);
       }
@@ -265,7 +278,7 @@ export default class Sheet extends View {
   switchSheet(i, cx) {
     cx.spawn(async (cx2) => {
       try { await this.openSheet(i, cx2); }
-      catch (e) { if (this.tab === i) this.sheetError = String(e?.message ?? e); }
+      catch (e) { if (this.tab === i && !this.closed) this.sheetError = String(e?.message ?? e); }
       cx2.notify();
     });
   }
@@ -277,7 +290,7 @@ export default class Sheet extends View {
     this.sheetError = null;
     cx?.notify();
     const sh = await this.wb.loadSheet(i);
-    if (this.tab !== i) return; // another sheet was picked meanwhile: its own load sets the view up
+    if (this.tab !== i || this.closed) return; // another sheet was picked meanwhile: its own load sets the view up
     this.sh = sh;
     this.media = this.media ?? {};
     this.zoom = this.sh.view?.zoom ?? 1;
@@ -289,6 +302,7 @@ export default class Sheet extends View {
     for (const d of this.sh.drawings) {
       if (d.kind !== "image" || this.media[d.media]) continue;
       const rel = await mediaPath(this.wb.src, d.media, this.id);
+      if (this.closed) { if (rel?.startsWith(`${CACHE}/m-`)) removeCache(`${appHome()}/${rel}`); return; }
       this.media[d.media] = rel;
       // A picture written to the cache (not one in the unzipped folder) goes with the tab too.
       if (rel && rel.startsWith(`${CACHE}/m-`)) (this.cleanup ??= []).push(`${appHome()}/${rel}`);
@@ -296,9 +310,19 @@ export default class Sheet extends View {
     cx?.notify();
   }
 
-  /** The cache this view made goes with it. */
+  /**
+   * The cache this view made goes with it, and so does its memory. Every mod's tabs share one
+   * heap of about 256 MiB, and the runtime frees a closed tab's sheets only if it collects
+   * cycles; once it has held a big sheet it may never again. Until then nothing else fits.
+   */
   async close() {
+    this.closed = true;
+    for (const wake of this.waiting ?? []) wake();
+    this.wb?.close?.();
+    this.wb = this.sh = this.sheetError = null;
+    forgetCharts(this.id);
     for (const p of this.cleanup ?? []) removeCache(p);
+    this.cleanup = [];
   }
 
   // ---- geometry ----
@@ -461,8 +485,8 @@ export default class Sheet extends View {
     let total = w, cc = c + dir, n = 0;
     while (cc >= 0 && cc < this.colsTotal() && n < 30) {
       const k = key(r, cc);
-      const nb = sh.cells.get(k);
-      if ((nb && nb.v !== null && nb.v !== undefined && nb.v !== "") || sh.mergeCovered.has(k) || sh.mergeAt.has(k)) break;
+      const v = sh.cells.value(k);
+      if ((v !== null && v !== "") || sh.mergeCovered.has(k) || sh.mergeAt.has(k)) break;
       total += colWidth(sh, cc);
       cc += dir; n++;
     }
@@ -619,10 +643,11 @@ export default class Sheet extends View {
       const rg = parseRange((m ? m[3] : part).replace(/\$/g, "").trim());
       if (!sh || !rg) continue;
       for (let r = rg.r1; r <= rg.r2; r++) for (let c = rg.c1; c <= rg.c2; c++) {
-        const cell = sh.cells.get(key(r, c));
-        const xf = this.wb.xfs[cell?.s ?? 0] ?? this.wb.xfs[0];
+        // Values and styles are read where the sheet keeps them: a series can be 100,000 cells.
+        const k = key(r, c);
+        const xf = this.wb.xfs[sh.cells.style(k)] ?? this.wb.xfs[0];
         const fmt = xf.fmt ?? builtinFormat(xf.numFmtId, this.locale);
-        const v = cell?.v;
+        const v = sh.cells.value(k);
         if (v === null || v === undefined) { values.push(null); continue; }
         if (typeof v === "number" && formatCode === null) formatCode = fmt;
         if (isNum) values.push(v);
@@ -804,7 +829,7 @@ async function csvWorkbook(csv, file, tick) {
   let n = 0;
   for (const c of csv.cells.values()) {
     if ((++n & 1023) === 0) await tick(true);
-    if (c.r > 2000) continue;
+    if (c.r > 2000) break; // cells come row by row
     const longest = Math.max(...String(c.text).split("\n").map((l) => l.length));
     widest[c.c] = Math.max(widest[c.c] ?? 0, longest);
   }
@@ -814,6 +839,7 @@ async function csvWorkbook(csv, file, tick) {
     sheets: [{ name: sheet.name, hidden: false }], activeTab: 0, date1904: false, theme: {},
     xfs: [{ numFmtId: 0, fmt: "General", font, fill: null, border: null, align: { h: "general", v: "bottom", wrap: false, indent: 0, rot: 0 } }],
     sheet: () => sheet, loadSheet: async () => sheet, sheetByName: () => null, src: {},
+    close: () => sheet.cells.clear(),
   };
 }
 

@@ -2,6 +2,7 @@
 // the delimiter Excel would pick (, ; tab |), and RFC 4180 parsing with quoted fields and
 // line breaks inside quotes. Numbers stay text as written ("2 561,5" is shown as-is, like
 // Excel shows a CSV opened in another locale... except plain numbers, which align right).
+import { Cells } from "./cells.js";
 
 // Windows-1251 bytes 0x80..0xFF.
 const CP1251 = "ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏђ‘’“”•–—\u0098™љ›њќћџ ЎўЈ¤Ґ¦§Ё©Є«¬­®Ї°±Ііґµ¶·ё№є»јЅѕїАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмнопрстуфхцчшщъыьэюя";
@@ -110,18 +111,27 @@ export function readCsv(bytes, { delimiter } = {}) {
   const { text, encoding } = decodeText(bytes);
   const delim = detectDelimiter(text, delimiter);
   const rows = parseCsv(text, delim);
-  const cells = new Map();
+  const cells = new Cells();
   let maxCol = 0;
   rows.forEach((fields, r) => {
     fields.forEach((f, c) => {
       if (f === "") return;
-      // Plain numbers (either decimal mark) become numbers, as Excel would read them here.
-      const plain = /^-?\d+([.,]\d+)?$/.test(f.trim()) ? Number(f.trim().replace(",", ".")) : null;
-      cells.set(r * 16384 + c, { r, c, s: 0, v: plain ?? f, text: f });
+      putField(cells, r, c, f);
       if (c > maxCol) maxCol = c;
     });
   });
   return { rows: rows.length, maxCol, cells, encoding, delimiter: delim };
+}
+
+/**
+ * A field as a cell { v, text }: the text as written, and plain numbers (either decimal mark) as
+ * numbers too, as Excel would read them here. Packed (cells.js) unless the number reads
+ * differently from its text ("1,5", "007"): a big CSV is mostly plain numbers and words.
+ */
+function putField(cells, r, c, f) {
+  const plain = /^-?\d+([.,]\d+)?$/.test(f.trim()) ? Number(f.trim().replace(",", ".")) : null;
+  if (plain === null || String(plain) === f) cells.add(r, c, 0, plain ?? f, true);
+  else cells.addCell({ r, c, s: 0, v: plain, text: f });
 }
 
 // ---- time-sliced versions for the mod runtime (an interpreter that stops long runs) ----
@@ -169,15 +179,16 @@ export async function readCsvText(text, { delimiter, encoding, tick }) {
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const delim = detectDelimiter(text, delimiter);
   const rows = await parseCsvAsync(text, delim, tick);
-  const cells = new Map();
+  const cells = new Cells();
   let maxCol = 0;
   for (let r = 0; r < rows.length; r++) {
     const fields = rows[r];
+    // A row's fields go once they're cells: the rows and the cells aren't held both at once.
+    rows[r] = null;
     for (let c = 0; c < fields.length; c++) {
       const f = fields[c];
       if (f === "") continue;
-      const plain = /^-?\d+([.,]\d+)?$/.test(f.trim()) ? Number(f.trim().replace(",", ".")) : null;
-      cells.set(r * 16384 + c, { r, c, s: 0, v: plain ?? f, text: f });
+      putField(cells, r, c, f);
       if (c > maxCol) maxCol = c;
     }
     if ((r & 255) === 255) await tick(true);
