@@ -396,24 +396,49 @@ async function scanSheetData(data, sheet, wb, tick) {
   }
 }
 
-/** Where a sheet's data ends, for formulas over whole columns; null when unknown. */
+/** Where a sheet's data ends, for formulas over whole columns; null when it isn't loaded. */
 const boundsOf = (sh) => (sh && Number.isFinite(sh.maxRow) && Number.isFinite(sh.maxCol) ? { maxRow: sh.maxRow, maxCol: sh.maxCol } : null);
 
-function valueGetter(sheet, wb) {
+/**
+ * The ctx that formulas on `sheet` are evaluated with (formula.js). Reading a cell saved without
+ * its value computes it, once. So results over ranges are kept too: a column of =B1/SUM(B:B), or a
+ * rule =A1>AVERAGE(A:A), sums B once.
+ */
+function formulaContext(sheet, wb) {
   const busy = new Set();
+  // A cell that reaches itself (A1 =SUM(A:A)) reads #REF! while it's being computed. A result
+  // that saw one isn't kept: read from another cell, the range holds A1's real value.
+  let cycles = 0;
+  // The sheet being read names itself too (Sheet1!A1), though it isn't among the loaded ones yet.
+  const named = (name) => (name === sheet.name ? sheet : wb.sheetByName(name));
+  const ctxs = new Map();
+  /** The ctx for a formula on sheet `sh`: its references without a sheet name are sh's cells. */
+  const ctxOf = (sh) => {
+    if (ctxs.has(sh)) return ctxs.get(sh);
+    const kept = new Map();
+    const ctx = {
+      get: (r, c, nm) => (nm ? get(r, c, nm) : sh === sheet ? get(r, c) : getIn(sh, r, c)),
+      bounds: (nm) => boundsOf(nm ? named(nm) : sh),
+      memo: (k, compute) => {
+        if (kept.has(k)) return kept.get(k);
+        const seen = cycles, v = compute();
+        if (cycles === seen) { if (kept.size > 5000) kept.clear(); kept.set(k, v); }
+        return v;
+      },
+    };
+    ctxs.set(sh, ctx);
+    return ctx;
+  };
   const get = (r, c, sheetName) => {
-    const sh = sheetName ? wb.sheetByName(sheetName) : sheet;
+    const sh = sheetName ? named(sheetName) : sheet;
     if (!sh) return { error: "#REF!" };
     const cell = sh.cells.get(key(r, c));
     if (!cell) return null;
     if (cell.missing && cell.f) {
       const k = sh.index + ":" + key(r, c);
-      if (busy.has(k)) return { error: "#REF!" };
+      if (busy.has(k)) { cycles++; return { error: "#REF!" }; }
       busy.add(k);
-      const v = evaluate(cell.f, {
-        get: (rr, cc, nm) => (nm ? get(rr, cc, nm) : (sh === sheet ? get(rr, cc) : getIn(sh, rr, cc))),
-        bounds: (nm) => boundsOf(nm ? wb.sheetByName(nm) : sh),
-      }, cell.fBase ? { r, c, baseR: cell.fBase.r, baseC: cell.fBase.c } : null);
+      const v = evaluate(cell.f, ctxOf(sh), cell.fBase ? { r, c, baseR: cell.fBase.r, baseC: cell.fBase.c } : { r, c });
       busy.delete(k);
       if (v !== undefined) { cell.v = v; cell.missing = false; }
       else cell.unknown = true;
@@ -421,12 +446,22 @@ function valueGetter(sheet, wb) {
     return cell.v;
   };
   const getIn = (sh, r, c) => { const cell = sh.cells.get(key(r, c)); return cell ? cell.v : null; };
-  return get;
+  return ctxOf(sheet);
 }
 
 async function computeMissing(sheet, wb, tick) {
-  const get = valueGetter(sheet, wb);
-  for (const cell of sheet.cells.values()) if (cell.missing) { get(cell.r, cell.c); await tick(); }
+  const ctx = formulaContext(sheet, wb);
+  // Formulas over ranges go last. A total above a column of formulas would compute the whole
+  // column in one go, without a yield, and the runtime stops a script that runs that long; after
+  // the column it reads values. A plain formula that reads such a total still pulls the column in
+  // one go, as does a total over range formulas (#18).
+  const later = [];
+  for (const cell of sheet.cells.values()) {
+    if (!cell.missing) continue;
+    if (cell.f.includes(":")) later.push(cell);
+    else { ctx.get(cell.r, cell.c); await tick(); }
+  }
+  for (const cell of later) { ctx.get(cell.r, cell.c); await tick(); }
 }
 
 // ---- conditional formatting ----------------------------------------------------
@@ -463,14 +498,13 @@ function threshold(cfvo, stats, get) {
 function lerpColor(a, b, k) { return mix(a, b, Math.max(0, Math.min(1, k))); }
 
 async function applyConditionalFormats(sheet, doc, wb, tick) {
-  const get = valueGetter(sheet, wb);
-  const ctx = { get, bounds: (nm) => boundsOf(nm ? wb.sheetByName(nm) : sheet) };
+  const ctx = formulaContext(sheet, wb);
   const blocks = kids(doc, "conditionalFormatting");
   const rules = [];
   for (const b of blocks) {
-    // Whole-column rules ("A:A", "A1:A1048576") only matter where there is data.
+    // Rules over whole columns or rows ("A:A", "A1:A1048576", "2:2") only matter where there is data.
     const ranges = (b.attrs.sqref ?? "").split(/\s+/)
-      .map((x) => parseRange(/^[A-Z]+:[A-Z]+$/i.test(x) ? x.replace(/^([A-Z]+):([A-Z]+)$/i, "$11:$21048576") : x)).filter(Boolean)
+      .map((x) => parseRange(x.replace(/^([A-Z]+):([A-Z]+)$/i, "$11:$21048576").replace(/^(\d+):(\d+)$/, "A$1:XFD$2"))).filter(Boolean)
       .map((rg) => ({ ...rg, r2: Math.min(rg.r2, sheet.maxRow), c2: Math.min(rg.c2, sheet.maxCol) }))
       .filter((rg) => rg.r1 <= rg.r2 && rg.c1 <= rg.c2);
     for (const rule of kids(b, "cfRule")) rules.push({ ranges, rule, priority: Number(rule.attrs.priority ?? 999) });

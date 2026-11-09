@@ -2,10 +2,17 @@
 // libraries such as openpyxl) and for conditional-formatting rules. Excel files normally store
 // every formula's last value, which is always shown as-is.
 //
-// evaluate(formula, ctx, at) -> number | string | boolean | {error} | Range
-//   ctx.get(r, c)  value of a cell (0-based), evaluating it if needed
-//   at = { r, c, baseR, baseC }  relative references shift by (r - baseR, c - baseC):
-//   that is how shared formulas and conditional-format expressions apply to a range.
+// evaluate(formula, ctx, at) -> number | string | boolean | null | {error}, undefined if unknown
+//   ctx.get(r, c, sheet)  value of a cell (0-based), evaluating it if needed
+//   ctx.bounds(sheet)  { maxRow, maxCol }, where the sheet's data ends: a range (A:A, 1:1,
+//                      A1:A1048576) stops there. null when the sheet isn't there (or loaded).
+//   ctx.memo(key, compute)  optional. compute() is a function's result over ranges; key names the
+//                           function and what it read. A ctx that returns the result it kept for
+//                           the key (while the cells are unchanged) lets a rule checked on every
+//                           row (A1>AVERAGE(A:A)) read A once.
+//   at = { r, c, baseR, baseC }  the cell the formula is for. Relative references shift by
+//   (r - baseR, c - baseC): that is how shared formulas and conditional-format expressions apply
+//   to a range. A range used as one value (=A:A*2) reads row r or column c of it.
 
 const ERR = (e) => ({ error: e });
 const isErr = (v) => v && typeof v === "object" && "error" in v;
@@ -16,19 +23,33 @@ export function colIndex(letters) {
   return n - 1;
 }
 
+// The last row and column of a sheet, 0-based: where a whole-column (A:A) or whole-row (1:1)
+// range ends.
+const LAST_ROW = 1048575, LAST_COL = 16383;
+
+/** The sheet name in a reference's `Sheet2!` or `'My data'!` prefix, unquoted; null without one. */
+const unquoteSheet = (name) => (name ? name.replace(/^'|'$/g, "").replace(/''/g, "'") : null);
+
+// Built once: the interpreter is slow, and every distinct formula text is tokenized.
+const SHEET_PREFIX = /(?:('(?:[^']|'')+'|[A-Za-z_][\w.]*)!)?/.source;
+const re = {
+  space: /^\s+/,
+  num: /^(\d+\.?\d*|\.\d+)(E[+-]?\d+)?%?/i,
+  str: /^"((?:[^"]|"")*)"/,
+  err: /^#(NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A)/,
+  cols: new RegExp("^" + SHEET_PREFIX + /(\$?)([A-Za-z]{1,3}):(\$?)([A-Za-z]{1,3})(?![\w(])/.source),
+  // Excel has no time literal (1:30 is written "1:30" or TIME(1,30,0)), so digits:digits
+  // outside a string are always rows.
+  rows: new RegExp("^" + SHEET_PREFIX + /(\$?)(\d+):(\$?)(\d+)(?![\w.(])/.source),
+  ref: new RegExp("^" + SHEET_PREFIX + /(\$?)([A-Za-z]{1,3})(\$?)(\d+)(?::(\$?)([A-Za-z]{1,3})(\$?)(\d+))?(?![\w(])/.source),
+  bool: /^(TRUE|FALSE)(?![\w(])/i,
+  fn: /^([A-Za-z_][\w.]*)\(/,
+  op: /^(<>|<=|>=|[-+*/^&=<>(),:;%])/,
+};
+
 function tokenize(s) {
   const out = [];
   let i = 0;
-  const re = {
-    space: /^\s+/,
-    num: /^(\d+\.?\d*|\.\d+)(E[+-]?\d+)?%?/i,
-    str: /^"((?:[^"]|"")*)"/,
-    err: /^#(NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A)/,
-    ref: /^(?:('(?:[^']|'')+'|[A-Za-z_][\w.]*)!)?(\$?)([A-Za-z]{1,3})(\$?)(\d+)(?::(\$?)([A-Za-z]{1,3})(\$?)(\d+))?(?![\w(])/,
-    bool: /^(TRUE|FALSE)(?![\w(])/i,
-    fn: /^([A-Za-z_][\w.]*)\(/,
-    op: /^(<>|<=|>=|[-+*/^&=<>(),:;%])/,
-  };
   while (i < s.length) {
     const rest = s.slice(i);
     let m;
@@ -36,8 +57,23 @@ function tokenize(s) {
     if ((m = re.str.exec(rest))) { out.push({ t: "str", v: m[1].replace(/""/g, '"') }); i += m[0].length; continue; }
     if ((m = re.err.exec(rest))) { out.push({ t: "err", v: "#" + m[1] }); i += m[0].length; continue; }
     if ((m = re.bool.exec(rest))) { out.push({ t: "bool", v: m[1].toUpperCase() === "TRUE" }); i += m[0].length; continue; }
+    // A whole column spans every row, so its rows never shift: they are absolute.
+    if ((m = re.cols.exec(rest))) {
+      out.push({ t: "ref", sheet: unquoteSheet(m[1]),
+        a: { cAbs: !!m[2], c: colIndex(m[3]), rAbs: true, r: 0 },
+        b: { cAbs: !!m[4], c: colIndex(m[5]), rAbs: true, r: LAST_ROW } });
+      i += m[0].length;
+      continue;
+    }
+    if ((m = re.rows.exec(rest))) {
+      out.push({ t: "ref", sheet: unquoteSheet(m[1]),
+        a: { cAbs: true, c: 0, rAbs: !!m[2], r: Number(m[3]) - 1 },
+        b: { cAbs: true, c: LAST_COL, rAbs: !!m[4], r: Number(m[5]) - 1 } });
+      i += m[0].length;
+      continue;
+    }
     if ((m = re.ref.exec(rest))) {
-      out.push({ t: "ref", sheet: m[1] ? m[1].replace(/^'|'$/g, "").replace(/''/g, "'") : null,
+      out.push({ t: "ref", sheet: unquoteSheet(m[1]),
         a: { cAbs: !!m[2], c: colIndex(m[3]), rAbs: !!m[4], r: Number(m[5]) - 1 },
         b: m[7] ? { cAbs: !!m[6], c: colIndex(m[7]), rAbs: !!m[8], r: Number(m[9]) - 1 } : null });
       i += m[0].length;
@@ -121,7 +157,7 @@ function compile(f) {
 }
 
 class Range {
-  constructor(sheet, r1, c1, r2, c2) { Object.assign(this, { sheet, r1, c1, r2, c2 }); }
+  constructor(sheet, r1, c1, r2, c2) { this.sheet = sheet; this.r1 = r1; this.c1 = c1; this.r2 = r2; this.c2 = c2; }
 }
 
 const num = (v) => {
@@ -137,8 +173,10 @@ const str = (v) => (v === null || v === undefined ? "" : typeof v === "boolean" 
 function values(ctx, x, out = []) {
   if (x instanceof Range) {
     // Cells past the sheet's data are empty, and no function here counts an empty cell: a
-    // whole-column range (A1:A1048576) stops at the data instead of walking a million rows.
+    // whole-column range (A:A, A1:A1048576) stops at the data instead of walking a million rows.
     const b = ctx.bounds?.(x.sheet);
+    // No such sheet (or not loaded yet): each cell would read #REF!, so the range reads one.
+    if (b === null) { out.push(ERR("#REF!")); return out; }
     const r2 = b ? Math.min(x.r2, b.maxRow) : x.r2, c2 = b ? Math.min(x.c2, b.maxCol) : x.c2;
     for (let r = x.r1; r <= r2; r++) for (let c = x.c1; c <= c2; c++) out.push(ctx.get(r, c, x.sheet));
   } else out.push(x);
@@ -196,11 +234,28 @@ function cmp(a, b) {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
+// A range used as one value (=A:A*2, a rule =$A:$A="Yes") is read the way Excel reads it: a
+// one-column range on the formula's row, a one-row range in its column, #VALUE! when the formula
+// is outside it. Without `at` the formula's place isn't known, so neither is the value.
+function single(ctx, v, at) {
+  if (!(v instanceof Range)) return v;
+  if (v.r1 === v.r2 && v.c1 === v.c2) return ctx.get(v.r1, v.c1, v.sheet);
+  if (!at) throw new Error("place");
+  if (v.c1 === v.c2) return at.r >= v.r1 && at.r <= v.r2 ? ctx.get(at.r, v.c1, v.sheet) : ERR("#VALUE!");
+  if (v.r1 === v.r2) return at.c >= v.c1 && at.c <= v.c2 ? ctx.get(v.r1, at.c, v.sheet) : ERR("#VALUE!");
+  return ERR("#VALUE!");
+}
+
+// What a function call read: a Range as its cells (not its text, so A:A and A1:A1048576 are one),
+// strings quoted ("1" isn't 1), and Infinity, NaN and an empty argument each their own.
+const memoKey = (name, args) => name + "(" + args.map((v) => (v instanceof Range ? `${JSON.stringify(v.sheet)}!${v.r1},${v.c1}:${v.r2},${v.c2}`
+  : isErr(v) ? v.error : typeof v === "string" ? JSON.stringify(v) : String(v))).join(";") + ")";
+
 function run(node, ctx, at) {
   switch (node.k) {
     case "lit": return node.v;
-    case "neg": { const v = run(node.v, ctx, at); const n = num(v instanceof Range ? ctx.get(v.r1, v.c1, v.sheet) : v); return isErr(n) ? n : node.sign === "-" ? -n : n; }
-    case "pct": { const n = num(run(node.v, ctx, at)); return isErr(n) ? n : n / 100; }
+    case "neg": { const n = num(single(ctx, run(node.v, ctx, at), at)); return isErr(n) ? n : node.sign === "-" ? -n : n; }
+    case "pct": { const n = num(single(ctx, run(node.v, ctx, at), at)); return isErr(n) ? n : n / 100; }
     case "ref": {
       const { a, b, sheet } = node.tk;
       const dr = at ? at.r - (at.baseR ?? at.r) : 0, dc = at ? at.c - (at.baseC ?? at.c) : 0;
@@ -213,12 +268,12 @@ function run(node, ctx, at) {
       if (!f) throw new Error("fn " + node.name);
       const args = node.args.map((x) => run(x, ctx, at));
       const scalarArgs = ["IF", "ABS", "ROUND", "INT", "NOT", "LEN", "UPPER", "LOWER", "ISBLANK", "ISNUMBER", "ISERROR", "IFERROR", "MOD"].includes(node.name);
-      return f(ctx, scalarArgs ? args.map((v) => (v instanceof Range ? ctx.get(v.r1, v.c1, v.sheet) : v)) : args);
+      if (scalarArgs) return f(ctx, args.map((v) => single(ctx, v, at)));
+      if (!ctx.memo || !args.some((v) => v instanceof Range)) return f(ctx, args);
+      return ctx.memo(memoKey(node.name, args), () => f(ctx, args));
     }
     case "bin": {
-      let x = run(node.a, ctx, at), y = run(node.b, ctx, at);
-      if (x instanceof Range) x = ctx.get(x.r1, x.c1, x.sheet);
-      if (y instanceof Range) y = ctx.get(y.r1, y.c1, y.sheet);
+      const x = single(ctx, run(node.a, ctx, at), at), y = single(ctx, run(node.b, ctx, at), at);
       if (isErr(x)) return x;
       if (isErr(y)) return y;
       switch (node.op) {
@@ -248,8 +303,7 @@ function run(node, ctx, at) {
 /** The formula's value, or undefined when it uses something this evaluator doesn't know. */
 export function evaluate(formula, ctx, at) {
   try {
-    const v = run(compile(formula), ctx, at);
-    return v instanceof Range ? ctx.get(v.r1, v.c1, v.sheet) : v;
+    return single(ctx, run(compile(formula), ctx, at), at);
   } catch {
     return undefined;
   }

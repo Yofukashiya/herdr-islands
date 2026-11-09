@@ -257,8 +257,7 @@ herdr-app do tab.new --name report.xlsx --mod sheet-viewer --props '{"file":"/fu
 Limits:
 - **.xls** (Excel 97–2003) isn't read; save it as .xlsx.
 - **Formulas** aren't recalculated: you see the result saved in the file. When there is none, simple
-  formulas are computed and the rest show as formula text. Whole-column and whole-row references
-  (`A:A`, `1:1`) aren't computed yet ([#2](https://github.com/Yofukashiya/herdr-islands/issues/2)).
+  formulas are computed and the rest show as formula text.
 - **Angled text** is drawn horizontally; vertical stacked text works.
 - **Built-in table styles** are close approximations.
 - **Charts** have no trendlines, error bars or true 3D.

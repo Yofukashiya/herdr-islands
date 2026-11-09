@@ -18,7 +18,8 @@ All notable changes to this project are listed here. The format follows
   - a folder with changes inside gets the color and a dot, even when it's collapsed;
   - ignored files and folders are dimmed. Git lists an ignored folder once, so `node_modules` costs
     nothing.
-- **Tests:** `node --test` runs the tests in `tests/`. The first ones cover Files' git marks.
+- **Tests:** `node --test` runs the tests in `tests/`. They cover Files (git marks, folder listings,
+  the tree) and `sheet-viewer` (formulas, conditional formats).
 
 ### Changed
 
@@ -37,6 +38,18 @@ All notable changes to this project are listed here. The format follows
 
 ### Fixed
 
+- **`sheet-viewer`, formulas:** whole-column and whole-row references (`A:A`, `$B:$D`, `Sheet2!C:C`,
+  `1:1`) are computed now. They showed as formula text in cells saved without a value, and a
+  conditional format such as `=A1>AVERAGE(A:A)` never matched
+  ([#2](https://github.com/Yofukashiya/herdr-islands/issues/2)). Also:
+  - such a rule, or a column of `=B1/SUM(B:B)`, sums the column once instead of once per cell, so a
+    sheet of thousands of rows doesn't stall while it opens;
+  - a range used as one value (`=A:A*2`, a rule `=$A:$A="Yes"`) reads the formula's own row, as
+    Excel does. It read the range's first cell;
+  - a total above thousands of formulas saved without values no longer leaves the tab blank: the
+    formulas it adds up are computed first, a few at a time;
+  - a conditional format over whole rows (`2:2`) is applied; it was skipped;
+  - a formula that names its own sheet (`=SUM(Sheet1!A1:A9)` on Sheet1) reads it; it read `#REF!`.
 - **Side panel (Files, Changes, Mods):** it follows the cards' `opacity` now, so the grid shows
   through it as it does through the sidebar and the status bar. It was always solid
   ([#10](https://github.com/Yofukashiya/herdr-islands/issues/10)).
