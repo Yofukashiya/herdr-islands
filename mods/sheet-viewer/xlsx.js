@@ -216,7 +216,7 @@ export async function openXlsx(src, { pause = async () => {} } = {}) {
   // Sheets being read, and ones whose reading failed: the formulas' context holds a sheet in a
   // cycle of closures, which the runtime may never collect, so close() empties these too.
   const reading = new Set();
-  const io = { xml, text, relsOf, color, fill, font, baseFont, tick, reading };
+  const io = { xml, text, relsOf, color, fill, font, baseFont, tick, reading, closed: () => closed };
   /** The sheet, parsing it the first time (a promise). */
   wb.loadSheet = (i) => {
     if (loaded.has(i)) return Promise.resolve(loaded.get(i));
@@ -288,6 +288,8 @@ async function readSheet(wb, index, io) {
   const doc = parseXml(head + "<sheetData/>" + tail) ?? { children: [] };
   head = tail = "";
   const rels = await io.relsOf(meta.path);
+  // Closed while the parts were read: no sheet is made, and the text goes with this read.
+  if (io.closed()) throw new Error("closed");
 
   const sheet = {
     name: meta.name, index,

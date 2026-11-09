@@ -174,3 +174,15 @@ test("two sheets read at once each get their own rows", async () => {
     assert.deepEqual([two.cells.size, two.maxRow, two.cells.value(key(4999, 0))], [5000, 4999, 1005000]);
   } finally { Date.now = now; }
 });
+
+test("a workbook closed while its sheet's XML is still being read doesn't read the sheet", async () => {
+  const book = workbook(numbers(10));
+  let arrive;
+  const slow = { ...book, text: (p) => (p === "xl/worksheets/sheet1.xml" ? new Promise((r) => { arrive = () => r(book.text(p)); }) : book.text(p)) };
+  const wb = await openXlsx(slow);
+  const reading = wb.loadSheet(0);
+  await new Promise((r) => setImmediate(r));
+  wb.close();
+  arrive();
+  await assert.rejects(reading, /closed/);
+});
