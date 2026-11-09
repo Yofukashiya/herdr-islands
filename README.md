@@ -221,6 +221,7 @@ name only shows after a restart.
     added and `U` untracked (green), `D` deleted and `!` in conflict (red);
   - a folder with changes inside gets the same color and a dot, even when it's collapsed;
   - ignored files and folders are dimmed.
+- **Folders open at once:** the folders you can see are listed before you click them.
 
 To open files in a terminal editor from that menu, put `{ "terminal_editor": ["nvim"] }` in
 `mods/file-browser/settings.json`.

@@ -22,12 +22,23 @@ All notable changes to this project are listed here. The format follows
 
 ### Changed
 
+- **Files, opening a folder:** a click draws its rows at once; it took about half a second
+  ([#13](https://github.com/Yofukashiya/herdr-islands/issues/13)):
+  - the folders in view are listed before you open them, many in one process. A folder you open is
+    listed again right after, in case it changed since;
+  - a folder opened before its listing comes shows "Loading…" under it, and one that can't be listed
+    says why there;
+  - a refresh (every 10 seconds, and when something in the folder changes) lists the folder, every
+    open folder and the folders they show in one process. It used to start one per folder;
+  - on Windows a listing process is also quicker: about 0.2 s, down from 0.35 s.
 - **Files and Changes, status letters:** they're VS Code's now. `U` is an untracked file (it was `A`),
   `!` a conflict (it was `U`), and modified is amber: the old orange is red in some themes, the same
   as deleted. In Files the letter follows the name, so the radar on the window's edge doesn't cover it.
 
 ### Fixed
 
+- **Files:** a change made while the panel refreshes now shows right after. It waited for the next
+  10-second refresh.
 - **Changes:** opening a file no longer clears the panel (its list and the commit message you
   were typing) and loads it again. The cause was the same as in Files below.
 - **Files:** opening a file no longer reloads the whole tree (an empty "Loading files…" panel,
