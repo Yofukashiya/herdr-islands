@@ -48,5 +48,5 @@ Or keep it in the side panel, as Islands does: a block with the id `mods` in the
 
 The Look tab's Islands settings need `sidebar-chrome`; the theme choice works everywhere. With
 `sidebar-chrome` running, updates are found in the background and shared with this panel; without it,
-the panel checks when it opens. `sidebar-chrome` also sets the panel's opacity, as it does the other
-cards'.
+the panel checks when it opens. In the side panel, `sidebar-chrome` also sets its opacity, as it does
+the other cards'; as a dialog it stays solid.

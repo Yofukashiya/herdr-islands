@@ -8,7 +8,7 @@
 // One mod, three roles, by props: { file } a viewer tab, { menu } the menu popup, none the panel.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, window, openOverlay, props, shared } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, theme, window, openOverlay, props, shared, layout } from "herdr";
 import { openFile, findEditors, editors, terminalEditor, checkSheetViewer } from "./open.js";
 import { FileViewer } from "./viewer.js";
 import { FileMenu, menuItems, menuHeight } from "./menu.js";
@@ -26,6 +26,19 @@ const islandFill = (c) => {
   if (typeof o !== "number" || o >= 1 || !/^#[0-9a-f]{6}$/i.test(c)) return c;
   return c + Math.round(Math.max(0, o) * 255).toString(16).padStart(2, "0");
 };
+
+function find(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+// The panel's fill: the islands' one only in the Islands layout (its brand is sidebar-chrome),
+// because the setting outlives a switch to another layout. In a dialog it stays solid over the text.
+const panelFill = (c) => !props()?.overlay && find(layout(), "brand")?.content?.mod === "sidebar-chrome" ? islandFill(c) : c;
 
 /** The folder the tree shows: the focused terminal's. A pane with no folder of its own (a file
  *  opened from the tree, any mod's tab) keeps `shown`, the folder already in the tree for this
@@ -195,7 +208,7 @@ export default class Files extends View {
     if (key(this.context) !== this.context?.key) this.refresh(cx);
     const t = theme(), view = this.tree.view();
     const message = this.error || view.error || (!view.rows.length && (!this.root ? "No folder" : view.loading ? "Loading files…" : "No files"));
-    return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(islandFill(t.background)).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(panelFill(t.background)).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Files"))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? "")))
