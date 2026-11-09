@@ -147,3 +147,30 @@ test("cells written out of order or twice are all there once, the later one winn
   assert.deepEqual([sheet.cells.size, [...sheet.cells.values()].map((c) => [c.r, c.c, c.v]).sort()],
     [3, [[0, 0, 1], [0, 1, 3], [1, 0, 4]]]);
 });
+
+test("two sheets read at once each get their own rows", async () => {
+  // A sheet picked while another is still being read: both scans wait at the same time.
+  const sheetXml = (n, base) => {
+    const rows = [];
+    for (let r = 1; r <= n; r++) rows.push(`<row r="${r}"><c r="A${r}"><v>${base + r}</v></c></row>`);
+    return `<worksheet ${NS}><sheetData>${rows.join("")}</sheetData></worksheet>`;
+  };
+  const parts = {
+    "xl/workbook.xml": `<workbook ${NS}><sheets><sheet name="One" sheetId="1" r:id="rId1"/><sheet name="Two" sheetId="2" r:id="rId2"/></sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+      + `<Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/>`
+      + `<Relationship Id="rId2" Type="${REL}/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`,
+    "xl/worksheets/sheet1.xml": sheetXml(20000, 0),
+    "xl/worksheets/sheet2.xml": sheetXml(5000, 1000000),
+  };
+  const book = { text: async (p) => parts[p] ?? null, exists: async (p) => p in parts };
+  // The clock runs fast, so each scan yields at every chance and the two take turns.
+  const now = Date.now;
+  Date.now = () => performance.now() * 1000;
+  try {
+    const wb = await openXlsx(book, { pause: () => new Promise((r) => setImmediate(r)) });
+    const [one, two] = await Promise.all([wb.loadSheet(0), wb.loadSheet(1)]);
+    assert.deepEqual([one.cells.size, one.maxRow, one.cells.value(key(19999, 0))], [20000, 19999, 20000]);
+    assert.deepEqual([two.cells.size, two.maxRow, two.cells.value(key(4999, 0))], [5000, 4999, 1005000]);
+  } finally { Date.now = now; }
+});

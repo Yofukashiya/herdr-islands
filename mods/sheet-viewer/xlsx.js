@@ -390,8 +390,11 @@ async function scanSheetData(src, from, to, sheet, wb, tick) {
   let m, rowIdx = -1;
   const shared = new Map(); // si -> { f, r, c }
   const cells = sheet.cells;
-  ROW_RE.lastIndex = from;
-  while ((m = ROW_RE.exec(src)) && m.index < to) {
+  // Its own copy of the pattern: the loop waits between rows, and a sheet picked meanwhile is
+  // scanned at the same time. A shared one's lastIndex would skip or repeat rows in both.
+  const rowRe = new RegExp(ROW_RE.source, "g");
+  rowRe.lastIndex = from;
+  while ((m = rowRe.exec(src)) && m.index < to) {
     const ra = attrsOf(m[1]);
     rowIdx = ra.r ? Number(ra.r) - 1 : rowIdx + 1;
     // Excel writes `ht` for rows it auto-fit too; both are the height it draws. LibreOffice writes

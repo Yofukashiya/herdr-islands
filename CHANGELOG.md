@@ -51,7 +51,8 @@ All notable changes to this project are listed here. The format follows
   - CSV files use the same packed cells;
   - closing the tab empties its workbook at once. Herdr may never collect a closed tab's memory on
     its own, so after one big sheet even the next small one could fail. A tab closed while it
-    reads stops reading and lets go of it too.
+    reads stops reading and lets go of it too;
+  - a sheet picked while another was still being read no longer skips or repeats rows of both.
 - **`sheet-viewer`, formulas:** whole-column and whole-row references (`A:A`, `$B:$D`, `Sheet2!C:C`,
   `1:1`) are computed now. They showed as formula text in cells saved without a value, and a
   conditional format such as `=A1>AVERAGE(A:A)` never matched

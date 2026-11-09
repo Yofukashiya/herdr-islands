@@ -261,6 +261,8 @@ export default class Sheet extends View {
         const visible = this.wb.sheets.map((s, i) => (s.hidden ? -1 : i)).filter((i) => i >= 0);
         stage("Reading the sheet");
         await this.openSheet(visible.includes(this.wb.activeTab) ? this.wb.activeTab : visible[0] ?? 0, cx);
+        // Closed while a small workbook read without a pause to stop it: what it made goes now.
+        if (this.closed) { this.close(); return; }
         this.state = "ready";
       } catch (e) {
         // Closed while reading: the cache made since close() goes too.
