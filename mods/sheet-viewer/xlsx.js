@@ -220,7 +220,13 @@ export async function openXlsx(src, { pause = async () => {} } = {}) {
   /** The sheet, parsing it the first time (a promise). */
   wb.loadSheet = (i) => {
     if (loaded.has(i)) return Promise.resolve(loaded.get(i));
-    if (!loading.has(i)) loading.set(i, readSheet(wb, i, io).then((sh) => { reading.delete(sh); if (closed) emptySheet(sh); else loaded.set(i, sh); return sh; }));
+    if (!loading.has(i)) loading.set(i, readSheet(wb, i, io).then((sh) => {
+      reading.delete(sh);
+      // Closed while the sheet's tables, comments or drawing were read: no sheet is handed out.
+      if (closed) { emptySheet(sh); throw new Error("closed"); }
+      loaded.set(i, sh);
+      return sh;
+    }));
     return loading.get(i);
   };
   /**

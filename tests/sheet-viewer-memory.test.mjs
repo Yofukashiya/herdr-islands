@@ -186,3 +186,18 @@ test("a workbook closed while its sheet's XML is still being read doesn't read t
   arrive();
   await assert.rejects(reading, /closed/);
 });
+
+test("a workbook closed while its sheet's table is still being read doesn't hand out the sheet", async () => {
+  const book = workbook(numbers(10), `<tableParts count="1"><tablePart r:id="rId1"/></tableParts>`, {
+    sheetRels: `<Relationship Id="rId1" Type="${REL}/table" Target="../tables/table1.xml"/>`,
+    more: { "xl/tables/table1.xml": `<table ${NS} id="1" name="T" displayName="T" ref="A1:C10"><tableStyleInfo name="TableStyleLight1"/></table>` },
+  });
+  let arrive;
+  const slow = { ...book, text: (p) => (p === "xl/tables/table1.xml" ? new Promise((r) => { arrive = () => r(book.text(p)); }) : book.text(p)) };
+  const wb = await openXlsx(slow);
+  const reading = wb.loadSheet(0);
+  while (!arrive) await new Promise((r) => setImmediate(r));
+  wb.close();
+  arrive();
+  await assert.rejects(reading, /closed/);
+});
